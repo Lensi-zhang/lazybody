@@ -33,7 +33,9 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build with Gradle
-        run: ./gradlew assembleRelease --stacktrace --no-daemon
+        run: |
+          ./gradlew clean --stacktrace --no-daemon
+          ./gradlew assembleRelease --stacktrace --no-daemon
         env:
           GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=512m
 
