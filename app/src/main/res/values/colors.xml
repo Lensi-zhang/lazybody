@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Lazy Green Theme - Seed: #4CAF50 -->
+
+    <!-- Light Scheme -->
+    <color name="md_theme_light_primary">#2E7D32</color>
+    <color name="md_theme_light_onPrimary">#FFFFFF</color>
+    <color name="md_theme_light_primaryContainer">#A5D6A7</color>
+    <color name="md_theme_light_onPrimaryContainer">#1B5E20</color>
+
+    <color name="md_theme_light_secondary">#4CAF50</color>
+    <color name="md_theme_light_onSecondary">#FFFFFF</color>
+    <color name="md_theme_light_secondaryContainer">#C8E6C9</color>
+    <color name="md_theme_light_onSecondaryContainer">#2E7D32</color>
+
+    <color name="md_theme_light_tertiary">#00897B</color>
+    <color name="md_theme_light_onTertiary">#FFFFFF</color>
+    <color name="md_theme_light_tertiaryContainer">#B2DFDB</color>
+    <color name="md_theme_light_onTertiaryContainer">#004D40</color>
+
+    <color name="md_theme_light_error">#B3261E</color>
+    <color name="md_theme_light_onError">#FFFFFF</color>
+    <color name="md_theme_light_errorContainer">#F9DEDC</color>
+    <color name="md_theme_light_onErrorContainer">#410E0B</color>
+
+    <color name="md_theme_light_background">#F1F8E9</color>
+    <color name="md_theme_light_onBackground">#1A1C1A</color>
+    <color name="md_theme_light_surface">#F1F8E9</color>
+    <color name="md_theme_light_onSurface">#1A1C1A</color>
+    <color name="md_theme_light_surfaceVariant">#DCEDC8</color>
+    <color name="md_theme_light_onSurfaceVariant">#41483D</color>
+    <color name="md_theme_light_outline">#72796F</color>
+    <color name="md_theme_light_outlineVariant">#C1C9BE</color>
+
+    <color name="md_theme_light_inverseOnSurface">#F0F1EB</color>
+    <color name="md_theme_light_inverseSurface">#2F3129</color>
+    <color name="md_theme_light_inversePrimary">#81C784</color>
+
+    <color name="md_theme_light_shadow">#000000</color>
+    <color name="md_theme_light_surfaceTint">#2E7D32</color>
+    <color name="md_theme_light_scrim">#000000</color>
+
+    <!-- Dark Scheme -->
+    <color name="md_theme_dark_primary">#81C784</color>
+    <color name="md_theme_dark_onPrimary">#00390A</color>
+    <color name="md_theme_dark_primaryContainer">#1B5E20</color>
+    <color name="md_theme_dark_onPrimaryContainer">#A5D6A7</color>
+
+    <color name="md_theme_dark_secondary">#A5D6A7</color>
+    <color name="md_theme_dark_onSecondary">#00390A</color>
+    <color name="md_theme_dark_secondaryContainer">#2E7D32</color>
+    <color name="md_theme_dark_onSecondaryContainer">#C8E6C9</color>
+
+    <color name="md_theme_dark_tertiary">#80CBC4</color>
+    <color name="md_theme_dark_onTertiary">#003731</color>
+    <color name="md_theme_dark_tertiaryContainer">#00695C</color>
+    <color name="md_theme_dark_onTertiaryContainer">#B2DFDB</color>
+
+    <color name="md_theme_dark_error">#F2B8B5</color>
+    <color name="md_theme_dark_onError">#601410</color>
+    <color name="md_theme_dark_errorContainer">#8C1D18</color>
+    <color name="md_theme_dark_onErrorContainer">#F9DEDC</color>
+
+    <color name="md_theme_dark_background">#1A1C1A</color>
+    <color name="md_theme_dark_onBackground">#E2E3DC</color>
+    <color name="md_theme_dark_surface">#1A1C1A</color>
+    <color name="md_theme_dark_onSurface">#E2E3DC</color>
+    <color name="md_theme_dark_surfaceVariant">#41483D</color>
+    <color name="md_theme_dark_onSurfaceVariant">#C1C9BE</color>
+    <color name="md_theme_dark_outline">#8B9388</color>
+    <color name="md_theme_dark_outlineVariant">#41483D</color>
+
+    <color name="md_theme_dark_inverseOnSurface">#1A1C1A</color>
+    <color name="md_theme_dark_inverseSurface">#E2E3DC</color>
+    <color name="md_theme_dark_inversePrimary">#2E7D32</color>
+
+    <color name="md_theme_dark_shadow">#000000</color>
+    <color name="md_theme_dark_surfaceTint">#81C784</color>
+    <color name="md_theme_dark_scrim">#000000</color>
+
+    <!-- Snackbar Colors -->
+    <color name="snackbar_bg">#2E7D32</color>
+    <color name="snackbar_text">#FFFFFF</color>
+
+    <!-- Legacy Colors -->
+    <color name="colorAccent">#4CAF50</color>
+    <color name="gray">#757575</color>
+    <color name="black">#000000</color>
+    <color name="grey">#9E9E9E</color>
+    <color name="lightgrey">#E0E0E0</color>
+    <color name="colorPrimary">@color/md_theme_light_primary</color>
+
+    <!-- Status Colors -->
+    <color name="status_active">#4CAF50</color>
+    <color name="status_inactive">#9E9E9E</color>
+    <color name="status_error">#F44336</color>
+
+    <!-- Gradient Colors -->
+    <color name="gradient_start">#4CAF50</color>
+    <color name="gradient_end">#81C784</color>
+</resources>
