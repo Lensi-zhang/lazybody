@@ -1,4 +1,4 @@
-package com.lazy.anywhere.joystick;
+package com.lazybody.joystick;
 
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -17,7 +17,7 @@ import android.view.View;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 
-import com.lazy.anywhere.R;
+import com.lazybody.R;
 
 public class RockerView extends View {
     private Paint outerCirclePaint;

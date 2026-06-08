@@ -1,4 +1,4 @@
-package com.lazy.anywhere.database;
+package com.lazybody.database;
 
 import android.content.ContentValues;
 import android.content.Context;

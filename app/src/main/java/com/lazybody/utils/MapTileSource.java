@@ -1,4 +1,4 @@
-package com.lazy.anywhere.utils;
+package com.lazybody.utils;
 
 import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase;
 import org.osmdroid.util.MapTileIndex;

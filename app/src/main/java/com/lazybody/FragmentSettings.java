@@ -1,4 +1,4 @@
-package com.lazy.anywhere;
+package com.lazybody;
 
 import android.os.Bundle;
 import android.text.InputType;
@@ -11,7 +11,7 @@ import androidx.preference.SwitchPreferenceCompat;
 
 
 import com.elvishew.xlog.XLog;
-import com.lazy.anywhere.utils.GoUtils;
+import com.lazybody.utils.GoUtils;
 
 import java.util.Objects;
 

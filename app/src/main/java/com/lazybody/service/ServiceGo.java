@@ -1,4 +1,4 @@
-package com.lazy.anywhere.service;
+package com.lazybody.service;
 
 import android.annotation.SuppressLint;
 import android.app.Notification;
@@ -34,10 +34,10 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 
 import com.elvishew.xlog.XLog;
-import com.lazy.anywhere.MainActivity;
-import com.lazy.anywhere.R;
-import com.lazy.anywhere.joystick.JoyStick;
-import com.lazy.anywhere.utils.MapUtils;
+import com.lazybody.MainActivity;
+import com.lazybody.R;
+import com.lazybody.joystick.JoyStick;
+import com.lazybody.utils.MapUtils;
 
 import java.util.Random;
 

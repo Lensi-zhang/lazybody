@@ -1,4 +1,4 @@
-package com.lazy.anywhere.utils;
+package com.lazybody.utils;
 
 import android.content.Context;
 import android.content.Intent;

@@ -1,4 +1,4 @@
-package com.lazy.anywhere;
+package com.lazybody;
 
 import android.Manifest;
 import android.content.Intent;
@@ -10,7 +10,7 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.preference.PreferenceManager;
 
-import com.lazy.anywhere.utils.GoUtils;
+import com.lazybody.utils.GoUtils;
 
 import java.util.ArrayList;
 

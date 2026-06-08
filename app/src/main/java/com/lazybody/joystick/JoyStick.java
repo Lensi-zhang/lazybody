@@ -1,4 +1,4 @@
-package com.lazy.anywhere.joystick;
+package com.lazybody.joystick;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -25,13 +25,13 @@ import android.widget.SearchView;
 
 import androidx.preference.PreferenceManager;
 
-import com.lazy.anywhere.database.DataBaseHistoryLocation;
-import com.lazy.anywhere.HistoryActivity;
-import com.lazy.anywhere.MainActivity;
-import com.lazy.anywhere.R;
-import com.lazy.anywhere.utils.GCJ02LocationProvider;
-import com.lazy.anywhere.utils.GoUtils;
-import com.lazy.anywhere.utils.MapUtils;
+import com.lazybody.database.DataBaseHistoryLocation;
+import com.lazybody.HistoryActivity;
+import com.lazybody.MainActivity;
+import com.lazybody.R;
+import com.lazybody.utils.GCJ02LocationProvider;
+import com.lazybody.utils.GoUtils;
+import com.lazybody.utils.MapUtils;
 
 import org.osmdroid.api.IMapController;
 import org.osmdroid.bonuspack.location.GeocoderNominatim;
@@ -593,7 +593,7 @@ public class JoyStick extends View {
 
     private void initMap() {
         mMapView = mMapLayout.findViewById(R.id.map_joystick);
-        mMapView.setTileSource(com.lazy.anywhere.utils.MapTileSource.GAODE_ROAD);
+        mMapView.setTileSource(com.lazybody.utils.MapTileSource.GAODE_ROAD);
         mMapView.setMultiTouchControls(true);
         mMapController = mMapView.getController();
         mMapController.setZoom(15.0);

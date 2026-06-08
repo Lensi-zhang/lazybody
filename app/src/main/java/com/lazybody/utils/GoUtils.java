@@ -1,4 +1,4 @@
-package com.lazy.anywhere.utils;
+package com.lazybody.utils;
 
 import android.annotation.SuppressLint;
 import android.content.Context;

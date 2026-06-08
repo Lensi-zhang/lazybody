@@ -1,4 +1,4 @@
-package com.lazy.anywhere;
+package com.lazybody;
 
 import android.app.Application;
 

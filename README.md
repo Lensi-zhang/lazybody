@@ -1,6 +1,6 @@
 <div align="center">
 
-# Lazy
+# LazyBody
 
 **Android 虚拟定位工具**
 
@@ -18,6 +18,7 @@
 
 - **虚拟定位** - 在地图上自由选择虚拟位置
 - **摇杆控制** - 通过悬浮摇杆实时控制移动方向和速度
+- **路线模拟** - 支持沿路线自动移动模拟
 - **历史记录** - 保存常用位置，一键切换
 - **高德地图** - 使用高德地图瓦片，显示更精准
 - **方向传感器** - 支持真实手机方向感应
@@ -32,20 +33,18 @@
 
 1. 在系统设置中开启 **开发者选项**
 2. 打开 **允许模拟位置**
-3. 安装并打开 Lazy
+3. 安装并打开 LazyBody
 4. 在地图上长按选择目标位置
 5. 点击 **开始** 按钮启动虚拟定位
-6. 使用悬浮摇杆控制移动方向
 
 ## 技术架构
 
 ```
 ├── app/
-│   ├── src/main/java/com/lazy/anywhere/
+│   ├── src/main/java/com/lazybody/
 │   │   ├── MainActivity.java          # 主界面
 │   │   ├── HistoryActivity.java       # 历史记录
 │   │   ├── SettingsActivity.java      # 设置页面
-│   │   ├── WelcomeActivity.java       # 欢迎页
 │   │   ├── joystick/                  # 悬浮摇杆控制
 │   │   ├── service/                   # 模拟定位服务
 │   │   ├── database/                  # 数据库操作
@@ -72,11 +71,14 @@
 | ACCESS_COARSE_LOCATION | 获取粗略定位 |
 | SYSTEM_ALERT_WINDOW | 悬浮窗权限 |
 | FOREGROUND_SERVICE | 前台服务 |
-| INTERNET | 网络访问（地图瓦片） |
 
 ## 免责声明
 
 本项目仅供学习和研究使用，请勿用于任何违反法律法规的用途。使用本软件所产生的一切后果由用户自行承担。
+
+## 致谢
+
+本项目基于 [AnyWhere](https://github.com/cxOrz/AnyWhere) 二次开发，感谢原作者 [cxOrz](https://github.com/cxOrz) 的开源贡献。
 
 ## 开源许可
 

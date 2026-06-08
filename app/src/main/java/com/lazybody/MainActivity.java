@@ -1,4 +1,4 @@
-package com.lazy.anywhere;
+package com.lazybody;
 
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -50,13 +50,13 @@ import com.google.android.material.navigation.NavigationView;
 import com.google.android.material.snackbar.Snackbar;
 
 import org.osmdroid.views.overlay.TilesOverlay;
-import com.lazy.anywhere.database.DataBaseHistoryLocation;
-import com.lazy.anywhere.database.DataBaseHistorySearch;
-import com.lazy.anywhere.service.ServiceGo;
+import com.lazybody.database.DataBaseHistoryLocation;
+import com.lazybody.database.DataBaseHistorySearch;
+import com.lazybody.service.ServiceGo;
 
-import com.lazy.anywhere.utils.GCJ02LocationProvider;
-import com.lazy.anywhere.utils.GoUtils;
-import com.lazy.anywhere.utils.ShareUtils;
+import com.lazybody.utils.GCJ02LocationProvider;
+import com.lazybody.utils.GoUtils;
+import com.lazybody.utils.ShareUtils;
 
 import org.osmdroid.api.IMapController;
 import org.osmdroid.bonuspack.location.GeocoderNominatim;
@@ -496,7 +496,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
     private void initMap() {
         mMapView = findViewById(R.id.bdMapView);
-        mMapView.setTileSource(com.lazy.anywhere.utils.MapTileSource.GAODE_ROAD);
+        mMapView.setTileSource(com.lazybody.utils.MapTileSource.GAODE_ROAD);
         mMapView.getZoomController().setVisibility(org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER);
         mMapView.setMultiTouchControls(true);
 

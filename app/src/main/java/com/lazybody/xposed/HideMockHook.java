@@ -1,4 +1,4 @@
-package com.lazy.anywhere.xposed;
+package com.lazybody.xposed;
 
 import android.content.ContentResolver;
 import android.location.Location;
@@ -32,7 +32,7 @@ public class HideMockHook implements IXposedHookLoadPackage {
 
     // 白名单：排除自己和系统核心进程，避免误伤
     private static final List<String> WHITELIST_PACKAGES = Arrays.asList(
-            "com.lazy.anywhere",
+            "com.lazybody",
             "android",
             "com.android.systemui",
             "com.android.phone"

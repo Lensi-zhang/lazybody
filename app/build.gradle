@@ -5,7 +5,7 @@ plugins {
 android {
     ndkVersion = '26.2.11394342'
     compileSdk = 34
-    namespace = 'com.lazy.anywhere'
+    namespace = 'com.lazybody'
 
     signingConfigs {
         debug {
@@ -23,7 +23,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.lazy.anywhere"
+        applicationId "com.lazybody"
         minSdkVersion 24
         //noinspection ExpiredTargetSdkVersion
         targetSdkVersion 34
@@ -103,9 +103,9 @@ android {
             if (outputFile != null && outputFile.name.endsWith('.apk')) {
                 def fileName
                 if (variant.buildType.name == 'release') {
-                    fileName = "AnyWhere_${defaultConfig.versionName}_arm64-v8a_release.apk"
+                    fileName = "LazyBody_${defaultConfig.versionName}_arm64-v8a_release.apk"
                 } else {
-                    fileName = "AnyWhere_${defaultConfig.versionName}_arm64-v8a_debug.apk"
+                    fileName = "LazyBody_${defaultConfig.versionName}_arm64-v8a_debug.apk"
                 }
                 outputFileName=fileName
             }

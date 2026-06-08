@@ -1,4 +1,4 @@
-package com.lazy.anywhere.utils;
+package com.lazybody.utils;
 
 public class MapUtils {
 //    public final static String COORDINATE_TYPE_GCJ02 = "gcj02";

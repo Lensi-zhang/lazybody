@@ -1,4 +1,4 @@
-package com.lazy.anywhere;
+package com.lazybody;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -34,8 +34,8 @@ import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 
-import com.lazy.anywhere.database.DataBaseHistoryLocation;
-import com.lazy.anywhere.utils.GoUtils;
+import com.lazybody.database.DataBaseHistoryLocation;
+import com.lazybody.utils.GoUtils;
 
 public class HistoryActivity extends BaseActivity {
     public static final String KEY_ID = "KEY_ID";

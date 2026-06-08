@@ -1,4 +1,4 @@
-package com.lazy.anywhere.joystick;
+package com.lazybody.joystick;
 
 import android.content.Context;
 import android.util.AttributeSet;
@@ -6,7 +6,7 @@ import android.view.LayoutInflater;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 
-import com.lazy.anywhere.R;
+import com.lazybody.R;
 
 public class ButtonView extends LinearLayout {
     private ButtonViewClickListener mListener;
