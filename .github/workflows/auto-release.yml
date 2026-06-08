@@ -1,0 +1,94 @@
+name: Auto Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build APK and Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build with Gradle
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Prepare Artifacts
+        run: |
+          mkdir -p artifacts
+          find app/build/outputs/apk/release -name "*.apk" -exec cp {} artifacts/ \;
+          ls -la artifacts/
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: LazyBody-APKs
+          path: artifacts/*.apk
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: LazyBody ${{ github.ref_name }}
+          body: |
+            # LazyBody ${{ github.ref_name }} 发布说明
+
+            ## 🎉 发布
+
+            这是 LazyBody ${{ github.ref_name }} 版本！
+
+            ## 📱 功能特性
+
+            - **虚拟定位** - 在地图上自由选择虚拟位置
+            - **摇杆控制** - 通过悬浮摇杆实时控制移动方向和速度
+            - **位置搜索** - 支持通过地名搜索定位
+            - **坐标输入** - 支持手动输入经纬度精确定位
+            - **IP定位** - 支持通过IP地址获取位置
+            - **历史记录** - 保存常用位置和搜索历史，一键切换
+            - **位置分享** - 支持一键分享当前位置
+            - **高德地图** - 使用高德地图瓦片，显示更精准
+            - **方向传感器** - 支持真实手机方向感应
+            - **日夜模式** - 支持明暗主题切换
+            - **隐藏检测** - 内置Xposed模块，隐藏模拟定位状态
+
+            ## 📋 系统要求
+
+            - Android 8.0 (API 26) 及以上
+            - 开启开发者选项中的"允许模拟位置"
+
+            ## 🙏 致谢
+
+            本项目基于 [AnyWhere](https://github.com/cxOrz/AnyWhere) 二次开发，感谢原作者 [cxOrz](https://github.com/cxOrz) 的开源贡献。
+
+            ## 📄 开源许可
+
+            本项目基于 [GPL-3.0](LICENSE) 协议开源。
+
+            ## ⚠️ 免责声明
+
+            本项目仅供学习和研究使用，请勿用于任何违反法律法规的用途。使用本软件所产生的一切后果由用户自行承担。
+
+            ---
+
+            **如果觉得有用，请给个 Star 支持一下！**
+          files: artifacts/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
