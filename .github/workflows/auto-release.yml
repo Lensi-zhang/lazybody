@@ -52,7 +52,7 @@ jobs:
           path: artifacts/*.apk
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: LazyBody ${{ github.ref_name }}
           body: |
