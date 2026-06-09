@@ -6,7 +6,7 @@
 
 [![Android](https://img.shields.io/badge/Android-8.0%2B-green.svg)](https://developer.android.com)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/Release-v2.1.8-brightgreen.svg)](https://github.com/Lensi-zhang/lazybody/releases)
+[![Release](https://img.shields.io/badge/Release-v0.1-brightgreen.svg)](https://github.com/Lensi-zhang/lazybody/releases)
 
 一款基于 Android 系统模拟定位服务的虚拟定位应用，无需 ROOT 权限即可使用。
 
