@@ -8,9 +8,7 @@ build/
 .externalNativeBuild
 .cxx
 local.properties
-# *.apk - 允许根目录的发布APK，但忽略build目录中的APK
-/app/build/outputs/apk/
-/test-detector/build/outputs/apk/
+*.apk
 *.ap_
 *.aab
 *.jks
