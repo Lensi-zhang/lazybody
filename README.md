@@ -5,6 +5,7 @@
 **Android 虚拟定位工具**
 
 [![Android](https://img.shields.io/badge/Android-8.0%2B-green.svg)](https://developer.android.com)
+[![API](https://img.shields.io/badge/API-26%2B-blue.svg)](https://developer.android.com)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/badge/Release-v1.0-brightgreen.svg)](https://github.com/Lensi-zhang/lazybody/releases)
 
@@ -16,48 +17,45 @@
 
 ## 功能特性
 
+### 核心功能
 - **虚拟定位** - 在地图上自由选择虚拟位置
 - **摇杆控制** - 通过悬浮摇杆实时控制移动方向和速度
 - **位置搜索** - 支持通过地名搜索定位
 - **坐标输入** - 支持手动输入经纬度精确定位
 - **IP定位** - 支持通过IP地址获取位置
+
+### 数据管理
 - **历史记录** - 保存常用位置和搜索历史，一键切换
 - **位置分享** - 支持一键分享当前位置
+
+### 地图功能
 - **高德地图** - 使用高德地图瓦片，显示更精准
 - **方向传感器** - 支持真实手机方向感应
 - **日夜模式** - 支持明暗主题切换
-- **隐藏检测** - 内置 Xposed 模块，隐藏模拟定位状态
+
+### 高级功能
 - **活动边界** - 设定活动范围，到达边界自动返回
-
-## v1.0 更新内容
-
-### 架构重构
-- 迁移至 MVVM 架构模式
-- 引入 ViewModel + LiveData 管理 UI 状态
-- 使用 Repository 模式抽象数据层
-- ServiceGo 迁移至 Kotlin
-
-### 新增功能
-- **活动边界功能**
-  - 可视化边界圆圈显示
-  - 滑动条调节边界半径（10-1000米）
-  - 到达边界自动随机方向返回
-  - 摇杆方向自动同步
-  - 滑出/收起动画效果
-
-### 优化改进
-- 代码结构优化，模块职责清晰
-- 统一通知样式
-- 改进边界返回算法，平滑移动
+- **隐藏检测** - 内置 Xposed 模块，隐藏模拟定位状态
 
 ## 系统要求
 
-- Android 8.0 (API 26) 及以上
-- 开启开发者选项中的"允许模拟位置"
+| 要求 | 说明 |
+|------|------|
+| Android 版本 | 8.0 (API 26) 及以上 |
+| 开发者选项 | 开启"允许模拟位置" |
+| 悬浮窗权限 | 用于显示摇杆控件 |
+| ROOT 权限 | 不需要 |
+
+## 安装说明
+
+1. 从 [Releases](https://github.com/Lensi-zhang/lazybody/releases) 下载最新 APK
+2. 安装 APK 文件
+3. 授予必要的权限
 
 ## 使用方法
 
 ### 基础使用
+
 1. 在系统设置中开启 **开发者选项**
 2. 在开发者选项中打开 **允许模拟位置**，并选择 LazyBody 为模拟位置应用
 3. 安装并打开 LazyBody
@@ -65,6 +63,7 @@
 5. 点击右下角的 **飞行** 按钮启动虚拟定位
 
 ### 活动边界
+
 1. 启动模拟定位后，点击 **边界按钮**（圆形图标）
 2. 拖动滑动条设置活动半径（10-1000米）
 3. 地图上显示蓝色圆圈表示边界范围
@@ -73,6 +72,7 @@
 6. 再次点击边界按钮关闭功能
 
 ### 其他功能
+
 - **位置搜索**：点击顶部搜索图标，输入地名进行搜索
 - **坐标输入**：点击坐标输入按钮，手动输入经纬度或通过IP定位
 - **历史记录**：点击侧边栏历史记录，查看和快速切换到之前使用的位置
@@ -83,49 +83,98 @@
 ## 技术架构
 
 ```
-├── app/
-│   ├── src/main/java/com/lazybody/
-│   │   ├── MainActivity.java          # 主界面
-│   │   ├── HistoryActivity.java       # 历史记录
-│   │   ├── SettingsActivity.java      # 设置页面
-│   │   ├── joystick/                  # 悬浮摇杆控制
-│   │   │   ├── JoyStick.java          # 摇杆主控件
-│   │   │   ├── RockerView.java        # 摇杆视图
-│   │   │   └── ButtonView.java        # 按钮视图
-│   │   ├── service/                   # 模拟定位服务
-│   │   │   └── ServiceGoKt.kt         # Kotlin 版服务
-│   │   ├── database/                  # 数据库操作
-│   │   ├── utils/                     # 工具类
-│   │   │   ├── BoundarySimulator.kt   # 边界模拟器
-│   │   │   ├── MapUtils.java          # 地图工具
-│   │   │   └── MockFlagClearer.java   # Mock 标记清除
-│   │   └── xposed/                    # Xposed 隐藏模块
-│   │       ├── HideMockHook.java      # 隐藏 Mock 检测
-│   │       ├── LocationHook.kt        # 定位 Hook
-│   │       └── GnssStatusHook.kt      # GNSS 状态 Hook
-│   └── src/main/res/                  # 资源文件
-├── test-detector/                     # 检测工具模块
-└── build.gradle                       # 构建配置
+app/src/main/java/com/lazybody/
+├── MainActivity.java              # 主界面
+├── HistoryActivity.java           # 历史记录
+├── SettingsActivity.java          # 设置页面
+├── joystick/                      # 悬浮摇杆控制
+│   ├── JoyStick.java              # 摇杆主控件
+│   ├── RockerView.java            # 摇杆视图
+│   └── ButtonView.java            # 按钮视图
+├── service/                       # 模拟定位服务
+│   └── ServiceGoKt.kt             # Kotlin 版服务
+├── data/                          # 数据层
+│   ├── database/                  # Room 数据库
+│   └── repository/                # Repository 模式
+├── utils/                         # 工具类
+│   ├── BoundarySimulator.kt       # 边界模拟器
+│   ├── MapUtils.java              # 地图工具
+│   └── MockFlagClearer.java       # Mock 标记清除
+└── xposed/                        # Xposed 隐藏模块
+    ├── HideMockHook.java          # 隐藏 Mock 检测
+    ├── LocationHook.kt            # 定位 Hook
+    └── GnssStatusHook.kt          # GNSS 状态 Hook
 ```
 
 ## 核心技术
 
-- **osmdroid** - 开源地图引擎
-- **高德地图瓦片** - 国内地图数据源
-- **Xposed Framework** - 系统级 Hook 隐藏
-- **LocationManager** - Android 模拟定位 API
-- **GCJ-02 坐标转换** - 适配国内地图坐标系
-- **Kotlin** - 现代 Android 开发语言
-- **MVVM** - 架构模式
+| 技术 | 用途 |
+|------|------|
+| osmdroid | 开源地图引擎 |
+| 高德地图瓦片 | 国内地图数据源 |
+| Xposed Framework | 系统级 Hook 隐藏 |
+| LocationManager | Android 模拟定位 API |
+| GCJ-02 坐标转换 | 适配国内地图坐标系 |
+| Kotlin | 现代 Android 开发语言 |
+| MVVM | 架构模式 |
+| Room | 本地数据库 |
+| Coroutines | 异步编程 |
 
 ## 权限说明
 
 | 权限 | 用途 |
 |------|------|
-| ACCESS_FINE_LOCATION | 获取精确定位 |
-| ACCESS_COARSE_LOCATION | 获取粗略定位 |
-| SYSTEM_ALERT_WINDOW | 悬浮窗权限 |
-| FOREGROUND_SERVICE | 前台服务 |
+| `ACCESS_FINE_LOCATION` | 获取精确定位 |
+| `ACCESS_COARSE_LOCATION` | 获取粗略定位 |
+| `SYSTEM_ALERT_WINDOW` | 悬浮窗权限 |
+| `FOREGROUND_SERVICE` | 前台服务 |
+
+## 构建说明
+
+### 环境要求
+
+- Android Studio Hedgehog 或更高版本
+- JDK 11
+- Android SDK 34
+
+### 构建步骤
+
+```bash
+# 克隆项目
+git clone https://github.com/Lensi-zhang/lazybody.git
+
+# 进入项目目录
+cd lazybody
+
+# 构建 Debug APK
+./gradlew assembleDebug
+
+# 构建 Release APK
+./gradlew assembleRelease
+```
+
+## 更新日志
+
+### v1.0 (2026-06-13)
+
+#### 架构重构
+- 迁移至 MVVM 架构模式
+- 引入 ViewModel + LiveData 管理 UI 状态
+- 使用 Repository 模式抽象数据层
+- ServiceGo 迁移至 Kotlin
+
+#### 新增功能
+- **活动边界功能**
+  - 可视化边界圆圈显示
+  - 滑动条调节边界半径（10-1000米）
+  - 到达边界自动随机方向返回
+  - 摇杆方向自动同步
+  - 滑出/收起动画效果
+
+#### 优化改进
+- 代码结构优化，模块职责清晰
+- 统一通知样式
+- 改进边界返回算法，平滑移动
 
 ## 免责声明
 
