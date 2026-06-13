@@ -81,6 +81,7 @@ public class JoyStick extends View {
     private double mR = 0;
     private double disLng = 0;
     private double disLat = 0;
+    private boolean isBoundaryOverride = false; // 边界覆盖标志
     private final SharedPreferences sharedPreferences;
     /* 历史记录悬浮窗相关 */
     private FrameLayout mHistoryLayout;
@@ -360,6 +361,7 @@ public class JoyStick extends View {
         /* 方向键点击处理 */
         RockerView rckView = mJoystickLayout.findViewById(R.id.joystick_rocker);
         rckView.setListener(this::processDirection);
+        rckView.setJoyStick(this); // 设置 JoyStick 引用
 
         /* 方向键点击处理 */
         ButtonView btnView = mJoystickLayout.findViewById(R.id.joystick_button);
@@ -376,6 +378,11 @@ public class JoyStick extends View {
     }
 
     private void processDirection(boolean auto, double angle, double r) {
+        // 如果边界覆盖标志为true，忽略用户输入
+        if (isBoundaryOverride) {
+            return;
+        }
+        
         if (r <= 0) {
             mTimer.cancel();
             isMove = false;
@@ -434,6 +441,69 @@ public class JoyStick extends View {
     public interface JoyStickClickListener {
         void onMoveInfo(double speed, double disLng, double disLat, double angle);
         void onPositionInfo(double lng, double lat, double alt);
+    }
+
+    /**
+     * 设置摇杆方向（供边界模拟器调用）
+     * @param angle 角度（度）
+     * @param r 半径（0-1）
+     */
+    public void setDirection(double angle, double r) {
+        mAngle = angle;
+        mR = r;
+        isBoundaryOverride = true; // 设置边界覆盖标志
+        
+        // 重新计算位移
+        disLng = mSpeed * (double)(DivGo / 1000) * mR * Math.cos(mAngle * 2 * Math.PI / 360) / 1000;
+        disLat = mSpeed * (double)(DivGo / 1000) * mR * Math.sin(mAngle * 2 * Math.PI / 360) / 1000;
+        
+        // 更新摇杆控件的视觉位置
+        updateRockerViewPosition(angle, r);
+        
+        // 如果计时器正在运行，立即触发一次移动
+        if (isMove && mListener != null) {
+            mListener.onMoveInfo(mSpeed, disLng, disLat, 90.0F - mAngle);
+        }
+    }
+    
+    /**
+     * 清除边界覆盖标志（用户释放摇杆时调用）
+     */
+    public void clearBoundaryOverride() {
+        isBoundaryOverride = false;
+    }
+
+    /**
+     * 更新摇杆控件的视觉位置
+     */
+    private void updateRockerViewPosition(double angle, double r) {
+        if (mJoystickLayout != null) {
+            // 查找 RockerView 和 ButtonView
+            RockerView rckView = mJoystickLayout.findViewById(R.id.joystick_rocker);
+            ButtonView btnView = mJoystickLayout.findViewById(R.id.joystick_button);
+            
+            // 根据当前显示的摇杆类型更新位置
+            if (rckView != null && rckView.getVisibility() == VISIBLE) {
+                rckView.setRockerPosition(angle, r);
+            }
+            if (btnView != null && btnView.getVisibility() == VISIBLE) {
+                // ButtonView 也需要类似的方法，但暂时先处理 RockerView
+            }
+        }
+    }
+
+    /**
+     * 获取当前角度
+     */
+    public double getAngle() {
+        return mAngle;
+    }
+
+    /**
+     * 获取当前半径
+     */
+    public double getRadius() {
+        return mR;
     }
 
 

@@ -30,6 +30,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.RadioGroup;
+import android.widget.SeekBar;
 import android.widget.SimpleAdapter;
 import android.widget.TextView;
 
@@ -52,7 +53,7 @@ import com.google.android.material.snackbar.Snackbar;
 import org.osmdroid.views.overlay.TilesOverlay;
 import com.lazybody.database.DataBaseHistoryLocation;
 import com.lazybody.database.DataBaseHistorySearch;
-import com.lazybody.service.ServiceGo;
+import com.lazybody.service.ServiceGoKt;
 
 import com.lazybody.utils.GCJ02LocationProvider;
 import com.lazybody.utils.GoUtils;
@@ -91,6 +92,9 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     private OkHttpClient mOkHttpClient;
     private SharedPreferences sharedPreferences;
 
+    /* ============================== 活动边界 相关 ============================== */
+    private boolean isBoundaryEnabled = false;
+
     /* ============================== 主界面地图 相关 ============================== */
     /************** 地图 *****************/
     public static String mCurrentCity = null;
@@ -114,7 +118,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     private float mCurrentDirection = 0.0f;
     private boolean isMockServStart = false;
     private static boolean isWifiWarningShown = false;
-    private ServiceGo.ServiceGoBinder mServiceBinder;
+    private ServiceGoKt.ServiceGoBinder mServiceBinder;
     private ServiceConnection mConnection;
     private FloatingActionButton mButtonStart;
     /* ============================== 历史记录 相关 ============================== */
@@ -131,6 +135,13 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     private MenuItem searchItem;
 
     private double mCurrentZoom = 16.0;
+
+    /* ============================== 活动边界 可视化 相关 ============================== */
+    private LinearLayout mBoundarySliderLayout;
+    private SeekBar mSeekBarBoundary;
+    private TextView mTvBoundaryInfo;
+    private org.osmdroid.views.overlay.Polygon mBoundaryCircle;
+    private View mBoundaryOverlay;
 
     @Override
     protected void onSaveInstanceState(@NonNull Bundle outState) {
@@ -199,7 +210,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         mConnection = new ServiceConnection() {
             @Override
             public void onServiceConnected(ComponentName name, IBinder service) {
-                mServiceBinder = (ServiceGo.ServiceGoBinder) service;
+                mServiceBinder = (ServiceGoKt.ServiceGoBinder) service;
             }
 
             @Override
@@ -298,7 +309,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
         if (isMockServStart) {
             unbindService(mConnection);
-            Intent serviceGoIntent = new Intent(MainActivity.this, ServiceGo.class);
+            Intent serviceGoIntent = new Intent(MainActivity.this, ServiceGoKt.class);
             stopService(serviceGoIntent);
         }
 
@@ -793,10 +804,149 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     private void initGoBtn() {
         mButtonStart = findViewById(R.id.faBtnStart);
         mButtonStart.setOnClickListener(this::doGoLocation);
+
+        // 初始化边界滑动条
+        initBoundarySlider();
+
+        // 活动边界按钮
+        FloatingActionButton btnBoundary = findViewById(R.id.faBtnBoundary);
+        btnBoundary.setOnClickListener(v -> {
+            if (isMockServStart) {
+                isBoundaryEnabled = !isBoundaryEnabled;
+                XLog.d("边界按钮点击: isBoundaryEnabled=" + isBoundaryEnabled);
+                if (isBoundaryEnabled) {
+                    GoUtils.DisplayToast(this, "活动边界已开启");
+                    btnBoundary.setImageResource(R.drawable.ic_boundary_on);
+                    // 显示滑动条（带动画）
+                    showBoundarySlider();
+                    drawBoundaryCircle();
+                } else {
+                    GoUtils.DisplayToast(this, "活动边界已关闭");
+                    btnBoundary.setImageResource(R.drawable.ic_boundary);
+                    // 隐藏滑动条（带动画）
+                    hideBoundarySlider();
+                    removeBoundaryCircle();
+                }
+                // 更新服务状态
+                if (mServiceBinder != null) {
+                    mServiceBinder.setBoundaryEnabled(isBoundaryEnabled);
+                }
+            } else {
+                GoUtils.DisplayToast(this, "请先启动模拟定位");
+            }
+        });
+    }
+
+    private void initBoundarySlider() {
+        mBoundarySliderLayout = findViewById(R.id.boundary_slider_layout);
+        mSeekBarBoundary = findViewById(R.id.seekBarBoundary);
+        mTvBoundaryInfo = findViewById(R.id.tv_boundary_info);
+        mBoundaryOverlay = findViewById(R.id.boundary_overlay);
+
+        // 设置初始位置在屏幕右边（隐藏状态）
+        mBoundarySliderLayout.setTranslationX(500f);
+
+        mSeekBarBoundary.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (fromUser) {
+                    mTvBoundaryInfo.setText(String.format("活动半径: %d米", progress));
+                    if (mServiceBinder != null) {
+                        mServiceBinder.setBoundaryRadius(progress);
+                    }
+                    drawBoundaryCircle();
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+
+        // 点击遮罩层时隐藏滑动条
+        mBoundaryOverlay.setOnClickListener(v -> {
+            hideBoundarySlider();
+        });
+    }
+
+    private void showBoundarySlider() {
+        mBoundaryOverlay.setVisibility(View.VISIBLE);
+        mBoundarySliderLayout.setVisibility(View.VISIBLE);
+        mBoundarySliderLayout.animate()
+                .translationX(0f)
+                .setDuration(300)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                .start();
+    }
+
+    private void hideBoundarySlider() {
+        mBoundarySliderLayout.animate()
+                .translationX(500f)
+                .setDuration(300)
+                .setInterpolator(new android.view.animation.AccelerateInterpolator())
+                .withEndAction(() -> {
+                    mBoundarySliderLayout.setVisibility(View.GONE);
+                    mBoundaryOverlay.setVisibility(View.GONE);
+                })
+                .start();
+    }
+
+    private void drawBoundaryCircle() {
+        if (mMapView == null) return;
+
+        // 使用当前模拟位置作为中心点
+        org.osmdroid.util.GeoPoint centerPoint = null;
+        if (mServiceBinder != null && isMockServStart) {
+            double lat = mServiceBinder.getCurLat();
+            double lng = mServiceBinder.getCurLng();
+            centerPoint = new org.osmdroid.util.GeoPoint(lat, lng);
+        } else if (mMarkLatLngMap != null) {
+            centerPoint = mMarkLatLngMap;
+        }
+
+        if (centerPoint == null) return;
+
+        XLog.d("drawBoundaryCircle: 中心点=" + centerPoint.getLatitude() + "," + centerPoint.getLongitude());
+
+        // 移除旧的边界圆
+        removeBoundaryCircle();
+
+        // 获取当前半径
+        int radius = mSeekBarBoundary.getProgress();
+
+        XLog.d("drawBoundaryCircle: 半径=" + radius + "米");
+
+        // 创建边界圆
+        mBoundaryCircle = new org.osmdroid.views.overlay.Polygon();
+        mBoundaryCircle.setFillColor(android.graphics.Color.argb(30, 0, 150, 255));
+        mBoundaryCircle.setStrokeColor(android.graphics.Color.argb(100, 0, 150, 255));
+        mBoundaryCircle.setStrokeWidth(2f);
+
+        // 生成圆的点
+        java.util.List<org.osmdroid.util.GeoPoint> circlePoints = new java.util.ArrayList<>();
+        for (int i = 0; i <= 360; i += 10) {
+            double lat = centerPoint.getLatitude() + (radius / 111319.9) * Math.cos(Math.toRadians(i));
+            double lng = centerPoint.getLongitude() + (radius / (111319.9 * Math.cos(Math.toRadians(centerPoint.getLatitude())))) * Math.sin(Math.toRadians(i));
+            circlePoints.add(new org.osmdroid.util.GeoPoint(lat, lng));
+        }
+        mBoundaryCircle.setPoints(circlePoints);
+
+        mMapView.getOverlays().add(mBoundaryCircle);
+        mMapView.invalidate();
+    }
+
+    private void removeBoundaryCircle() {
+        if (mBoundaryCircle != null && mMapView != null) {
+            mMapView.getOverlays().remove(mBoundaryCircle);
+            mBoundaryCircle = null;
+            mMapView.invalidate();
+        }
     }
 
     private void startGoLocation() {
-        Intent serviceGoIntent = new Intent(MainActivity.this, ServiceGo.class);
+        Intent serviceGoIntent = new Intent(MainActivity.this, ServiceGoKt.class);
         bindService(serviceGoIntent, mConnection, BIND_AUTO_CREATE);
         serviceGoIntent.putExtra(LNG_MSG_ID, mMarkLatLngMap.getLongitude());
         serviceGoIntent.putExtra(LAT_MSG_ID, mMarkLatLngMap.getLatitude());
@@ -815,7 +965,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
     private void stopGoLocation() {
         unbindService(mConnection);
-        Intent serviceGoIntent = new Intent(MainActivity.this, ServiceGo.class);
+        Intent serviceGoIntent = new Intent(MainActivity.this, ServiceGoKt.class);
         stopService(serviceGoIntent);
         isMockServStart = false;
     }
@@ -840,14 +990,12 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         if (isMockServStart) {
             if (mMarkLatLngMap == null) {
                 stopGoLocation();
-                Snackbar.make(v, "模拟位置已终止", Snackbar.LENGTH_LONG)
-                        .setAction("Action", null).show();
+                GoUtils.DisplayToast(this, "模拟位置已终止");
                 mButtonStart.setImageResource(R.drawable.ic_position);
             } else {
                 double alt = Double.parseDouble(sharedPreferences.getString("setting_altitude", "55.0"));
                 mServiceBinder.setPosition(mMarkLatLngMap.getLongitude(), mMarkLatLngMap.getLatitude(), alt);
-                Snackbar.make(v, "已传送到新位置", Snackbar.LENGTH_LONG)
-                        .setAction("Action", null).show();
+                GoUtils.DisplayToast(this, "已传送到新位置");
 
                 recordCurrentLocation(mMarkLatLngMap.getLongitude(), mMarkLatLngMap.getLatitude());
 
@@ -867,13 +1015,11 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                 XLog.e("无模拟位置权限!");
             } else {
                 if (mMarkLatLngMap == null) {
-                    Snackbar.make(v, "请先点击地图位置或者搜索位置", Snackbar.LENGTH_LONG)
-                            .setAction("Action", null).show();
+                    GoUtils.DisplayToast(this, "请先点击地图位置或者搜索位置");
                 } else {
                     startGoLocation();
                     mButtonStart.setImageResource(R.drawable.ic_fly);
-                    Snackbar.make(v, "模拟位置已启动", Snackbar.LENGTH_LONG)
-                            .setAction("Action", null).show();
+                    GoUtils.DisplayToast(this, "模拟位置已启动");
 
                     recordCurrentLocation(mMarkLatLngMap.getLongitude(), mMarkLatLngMap.getLatitude());
 

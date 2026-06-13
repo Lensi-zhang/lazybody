@@ -73,7 +73,66 @@
                 android:dividerHeight="0.5dp"/>
         </LinearLayout>
 
+        <!-- Boundary Radius Slider -->
+        <LinearLayout
+            android:id="@+id/boundary_slider_layout"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginBottom="120dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="88dp"
+            android:orientation="vertical"
+            android:gravity="center_vertical"
+            android:background="@drawable/boundary_slider_bg"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:visibility="gone"
+            android:elevation="4dp">
+
+            <TextView
+                android:id="@+id/tv_boundary_info"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="活动半径: 100米"
+                android:textColor="#2E7D32"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="4dp" />
+
+            <SeekBar
+                android:id="@+id/seekBarBoundary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:min="10"
+                android:max="1000"
+                android:progress="100"
+                android:progressTint="#2E7D32"
+                android:thumbTint="#2E7D32" />
+        </LinearLayout>
+
+        <!-- Transparent overlay to catch clicks outside slider -->
+        <View
+            android:id="@+id/boundary_overlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone"
+            android:background="@android:color/transparent" />
+
         <!-- FAB Layer (Top) -->
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/faBtnBoundary"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="24dp"
+            android:layout_marginBottom="120dp"
+            android:contentDescription="@null"
+            style="@style/Widget.Material3.FloatingActionButton.Secondary"
+            app:srcCompat="@drawable/ic_boundary" />
+
         <com.google.android.material.floatingactionbutton.FloatingActionButton
             android:id="@+id/faBtnStart"
             android:layout_width="wrap_content"

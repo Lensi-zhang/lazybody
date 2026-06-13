@@ -59,7 +59,7 @@
 
         <service
             android:exported="false"
-            android:name="com.lazybody.service.ServiceGo"
+            android:name="com.lazybody.service.ServiceGoKt"
             android:foregroundServiceType="location" />
 
         <provider
