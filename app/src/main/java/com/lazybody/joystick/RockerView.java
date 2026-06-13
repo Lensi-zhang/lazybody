@@ -42,6 +42,7 @@ public class RockerView extends View {
 
     private RockerViewClickListener mListener;
     private final Context mContext;
+    private JoyStick mJoyStick; // 添加 JoyStick 引用
 
     private Rect srcRect = null;
     private Rect dstRect = null;
@@ -147,6 +148,10 @@ public class RockerView extends View {
                 if (!isAuto) {
                     moveToPosition(viewCenterX, viewCenterY);
                 }
+                // 用户释放摇杆时清除边界覆盖标志
+                if (mJoyStick != null) {
+                    mJoyStick.clearBoundaryOverride();
+                }
                 performClick();
                 break;
         }
@@ -232,6 +237,39 @@ public class RockerView extends View {
 
     public void setListener(RockerViewClickListener mListener) {
         this.mListener = mListener;
+    }
+    
+    /**
+     * 设置 JoyStick 引用（用于清除边界覆盖标志）
+     */
+    public void setJoyStick(JoyStick joyStick) {
+        this.mJoyStick = joyStick;
+    }
+
+    /**
+     * 设置摇杆位置（供边界模拟器调用）
+     * @param angle 角度（度）- 以屏幕为准：0=右, 90=上, 180=左, 270=下
+     * @param r 半径（0-1）
+     */
+    public void setRockerPosition(double angle, double r) {
+        // 将角度和半径转换为 x, y 坐标
+        // 角度：0度为右方，顺时针增加（90=上，180=左，270=下）
+        double angleRad = Math.toRadians(angle);
+        float innerDistance = (float) (r * (outerCircleRadius - innerCircleRadius));
+        
+        // 转换为屏幕坐标：x = r*cos(angle), y = -r*sin(angle)
+        innerCenterX = (float) (viewCenterX + innerDistance * Math.cos(angleRad));
+        innerCenterY = (float) (viewCenterY - innerDistance * Math.sin(angleRad));
+        
+        // 更新目标矩形
+        dstRect = new Rect(
+                (int) (innerCenterX - mRockerBitmap.getWidth()),
+                (int) (innerCenterY - mRockerBitmap.getHeight()),
+                (int) (innerCenterX + mRockerBitmap.getWidth()),
+                (int) (innerCenterY + mRockerBitmap.getHeight()));
+        
+        // 重绘
+        invalidate();
     }
 
     public interface RockerViewClickListener {

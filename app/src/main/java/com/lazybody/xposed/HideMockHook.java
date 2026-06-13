@@ -47,7 +47,7 @@ public class HideMockHook implements IXposedHookLoadPackage {
         }
 
         try {
-            // 1. 基础防检测
+            // 1. 基础防检测 - 拦截 isFromMockProvider / isMock 直接返回 false
             XposedHelpers.findAndHookMethod(Location.class, "isFromMockProvider", new XC_MethodReplacement() {
                 @Override
                 protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
@@ -66,17 +66,20 @@ public class HideMockHook implements IXposedHookLoadPackage {
                 } catch (Throwable t) {}
             }
 
+            // 1.1 getExtras 返回前清理 mockLocation key
             XposedHelpers.findAndHookMethod(Location.class, "getExtras", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     Bundle extras = (Bundle) param.getResult();
-                    if (extras != null && extras.containsKey("mockLocation")) {
+                    if (extras != null) {
                         extras.remove("mockLocation");
+                        extras.remove("isFromMockProvider");
+                        extras.remove("mockProvider");
                     }
                 }
             });
 
-            // 1.1 从源头阻止 mock 标记被设置（覆盖所有路径，包括 LocationListener 同进程回调）
+            // 1.2 从源头阻止 mock 标记被设置 - 覆盖所有路径
             if (Build.VERSION.SDK_INT >= 31) {
                 try {
                     XposedHelpers.findAndHookMethod(Location.class, "setMock", boolean.class, new XC_MethodHook() {
@@ -96,10 +99,7 @@ public class HideMockHook implements IXposedHookLoadPackage {
                 });
             } catch (Throwable t) {}
 
-            // 1.2 清理 IPC 反序列化路径中的 Mock 标记字段
-            // 微信小程序通过 LocationListener 回调接收 Location 时，对象由 Parcel 反序列化而来，
-            // mIsFromMockProvider / mMock 字段在 readFromParcel 中被直接赋值。
-            // 通过直接修改字段值，可同时覆盖 Java 方法调用和反射/JNI 直接访问两种检测路径。
+            // 1.3 清理 IPC 反序列化路径中的 Mock 标记字段
             try {
                 XposedHelpers.findAndHookMethod(Location.class, "readFromParcel", android.os.Parcel.class, new XC_MethodHook() {
                     @Override
@@ -109,7 +109,7 @@ public class HideMockHook implements IXposedHookLoadPackage {
                 });
             } catch (Throwable t) { XposedBridge.log(t); }
 
-            // 1.3 清理主动查询场景（getLastKnownLocation）中的 Mock 标记字段
+            // 1.4 getLastKnownLocation 清理
             try {
                 XposedHelpers.findAndHookMethod(LocationManager.class, "getLastKnownLocation", String.class, new XC_MethodHook() {
                     @Override
@@ -122,7 +122,7 @@ public class HideMockHook implements IXposedHookLoadPackage {
                 });
             } catch (Throwable t) { XposedBridge.log(t); }
 
-            // 1.4 Hook getCurrentLocation (API 30+)，拦截回调中的 Consumer 并清理 mock 标记
+            // 1.5 getCurrentLocation (API 30+) Consumer 包装
             if (Build.VERSION.SDK_INT >= 30) {
                 try {
                     XposedBridge.hookAllMethods(LocationManager.class, "getCurrentLocation", new XC_MethodHook() {
@@ -145,6 +145,93 @@ public class HideMockHook implements IXposedHookLoadPackage {
                         }
                     });
                 } catch (Throwable t) { XposedBridge.log(t); }
+            }
+
+            // 1.6 requestLocationUpdates - 拦截 LocationListener 回调
+            Class<?> locationListenerClass = null;
+            try {
+                locationListenerClass = Class.forName("android.location.LocationListener");
+            } catch (ClassNotFoundException e) {
+                try {
+                    locationListenerClass = android.location.LocationListener.class;
+                } catch (Throwable ignored) {}
+            }
+
+            if (locationListenerClass != null) {
+                final Class<?> listenerClass = locationListenerClass;
+                try {
+                    XposedBridge.hookAllMethods(LocationManager.class, "requestLocationUpdates", new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                            for (int i = 0; i < param.args.length; i++) {
+                                if (param.args[i] != null && listenerClass.isInstance(param.args[i])) {
+                                    final Object originalListener = param.args[i];
+                                    param.args[i] = java.lang.reflect.Proxy.newProxyInstance(
+                                            listenerClass.getClassLoader(),
+                                            new Class<?>[] { listenerClass },
+                                            (proxy, method, args) -> {
+                                                if ("onLocationChanged".equals(method.getName())
+                                                        && args != null && args.length > 0
+                                                        && args[0] instanceof Location) {
+                                                    clearMockFlagField((Location) args[0]);
+                                                }
+                                                try {
+                                                    return method.invoke(originalListener, args);
+                                                } catch (java.lang.reflect.InvocationTargetException e) {
+                                                    throw e.getCause();
+                                                }
+                                            });
+                                    break;
+                                }
+                            }
+                        }
+                    });
+                } catch (Throwable t) { XposedBridge.log(t); }
+
+                // 1.7 removeUpdates 同样处理（保持引用一致性，避免某些实现检测）
+                try {
+                    XposedBridge.hookAllMethods(LocationManager.class, "removeUpdates", new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                            for (int i = 0; i < param.args.length; i++) {
+                                if (param.args[i] != null && listenerClass.isInstance(param.args[i])) {
+                                    // 对于 removeUpdates，无需包装，保持原样调用
+                                    break;
+                                }
+                            }
+                        }
+                    });
+                } catch (Throwable t) {}
+
+                // 1.8 requestSingleUpdate - 单次定位更新 (API 30+)
+                try {
+                    XposedBridge.hookAllMethods(LocationManager.class, "requestSingleUpdate", new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                            for (int i = 0; i < param.args.length; i++) {
+                                if (param.args[i] != null && listenerClass.isInstance(param.args[i])) {
+                                    final Object originalListener = param.args[i];
+                                    param.args[i] = java.lang.reflect.Proxy.newProxyInstance(
+                                            listenerClass.getClassLoader(),
+                                            new Class<?>[] { listenerClass },
+                                            (proxy, method, args) -> {
+                                                if ("onLocationChanged".equals(method.getName())
+                                                        && args != null && args.length > 0
+                                                        && args[0] instanceof Location) {
+                                                    clearMockFlagField((Location) args[0]);
+                                                }
+                                                try {
+                                                    return method.invoke(originalListener, args);
+                                                } catch (java.lang.reflect.InvocationTargetException e) {
+                                                    throw e.getCause();
+                                                }
+                                            });
+                                    break;
+                                }
+                            }
+                        }
+                    });
+                } catch (Throwable t) {}
             }
 
             // 2. 屏蔽 Wi-Fi 和 基站
