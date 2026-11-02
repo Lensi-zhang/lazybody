@@ -72,7 +72,7 @@ import org.osmdroid.views.MapView;
 import org.osmdroid.views.overlay.MapEventsOverlay;
 import org.osmdroid.views.overlay.Marker;
 import org.osmdroid.views.overlay.Polyline;
-import org.osmdroid.views.overlay.infowindow.MarkerInfoWindow;
+import org.osmdroid.views.overlay.infowindow.InfoWindow;
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
 
 import java.util.ArrayList;
@@ -851,7 +851,16 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             mCurrentMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM);
             mCurrentMarker.setIcon(androidx.core.content.ContextCompat.getDrawable(this, R.drawable.ic_marker_pin));
             mCurrentMarker.setTitle("Selected Location");
-            mCurrentMarker.setInfoWindow(new MarkerInfoWindow(R.layout.location_poi_info, mMapView));
+            mCurrentMarker.setInfoWindow(new InfoWindow(R.layout.location_poi_info, mMapView) {
+                @Override
+                public void onOpen(Object item) {
+                    // 自定义 POI 布局由 performReverseGeocoding 填充。
+                }
+
+                @Override
+                public void onClose() {
+                }
+            });
             mCurrentMarker.setOnMarkerClickListener((marker, mapView) -> {
                 performReverseGeocoding(marker.getPosition());
                 return true;
