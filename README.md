@@ -59,6 +59,19 @@
 
 ## 使用方法
 
+### Xposed / LSPosed 框架使用
+
+应用与 Xposed 模块已打包在同一个 APK 中，无需单独安装模块 APK。基础虚拟定位不需要 ROOT；WiFi / Cell 伪造、GNSS、传感器及第三方定位 SDK Hook 等高级功能需要可用的 Xposed 环境。以下以 LSPosed 为例：
+
+1. 在已 ROOT 的设备上安装并启用 LSPosed，然后安装 LazyBody 并至少打开一次
+2. 打开 LSPosed 管理器，在 **模块** 列表中找到 **LazyBody** 并启用
+3. 在模块的 **作用域** 中勾选需要使用模拟数据的目标应用，不要仅选择 LazyBody 自身或系统框架
+4. 强制停止并重新打开目标应用；若模块仍未生效，重启设备后重试
+5. 返回 LazyBody 启动模拟定位，再在目标应用中使用定位、网络环境或计步功能
+6. 如遇异常，可在 LSPosed 日志中筛选 `LazyBodyHook`、`LazyBodySensor` 等标签排查
+
+> 仅安装 APK 不会自动激活模块。不同 Android 版本、ROM 和目标应用的 Hook 兼容性可能存在差异。
+
 ### 基础使用
 
 1. 在系统设置中开启 **开发者选项**
