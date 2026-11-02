@@ -7,7 +7,7 @@
 [![Android](https://img.shields.io/badge/Android-7.0%2B-green.svg)](https://developer.android.com)
 [![API](https://img.shields.io/badge/API-24%2B-blue.svg)](https://developer.android.com)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/Release-v2.1-brightgreen.svg)](https://github.com/Lensi-zhang/lazybody/releases)
+[![Release](https://img.shields.io/badge/Release-v2.1.1-brightgreen.svg)](https://github.com/Lensi-zhang/lazybody/releases)
 
 一款基于 Android 系统模拟定位服务的虚拟定位应用，无需 ROOT 权限即可使用。
 
@@ -53,7 +53,7 @@
 
 ## 安装说明
 
-1. 从 [Releases](https://github.com/Lensi-zhang/lazybody/releases) 下载对应版本的 `LazyBody_2.1_release.apk`，或按下方说明自行构建
+1. 从 [Releases](https://github.com/Lensi-zhang/lazybody/releases) 下载对应版本的 `LazyBody_2.1.1_release.apk`，或按下方说明自行构建
 2. 在 Android 设备上安装 APK（项目未打包原生 ABI 专用库）
 3. 授予必要的权限
 
@@ -174,6 +174,12 @@ cd lazybody
 ```
 
 ## 更新日志
+
+### v2.1.1 (2026-11-02)
+
+- 修复自定义 POI 信息窗缺少默认标题控件时，点击地图标记发生空指针崩溃的问题
+- 完成 POI 保存、复制、分享与定位，以及路线模拟、轨迹录制和回放的真机验收
+- 验证 WiFi / Cell 设置修改与冷启动后的持久化
 
 ### v2.1 (2026-11-02)
 
