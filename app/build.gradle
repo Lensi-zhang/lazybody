@@ -29,7 +29,7 @@ android {
         //noinspection ExpiredTargetSdkVersion
         targetSdkVersion 34
         versionCode 2
-        versionName '1.0' // https://semver.org/lang/zh-CN/
+        versionName '2.0' // https://semver.org/lang/zh-CN/
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         resourceConfigurations += ['zh', 'zh-rCN', 'en', 'en-rUS']
         signingConfig = signingConfigs.release

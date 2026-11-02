@@ -31,8 +31,16 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.elvishew.xlog.XLog
 import com.lazybody.R
+import com.lazybody.bridge.EnvironmentConfig
+import com.lazybody.bridge.EnvironmentConfigStore
+import com.lazybody.bridge.StateBridge
+import com.lazybody.bridge.SimulationState
 import com.lazybody.joystick.JoyStick
-import com.lazybody.utils.BoundarySimulator
+import com.lazybody.route.RouteEngine
+import com.lazybody.route.RouteMode
+import com.lazybody.route.SpeedTier
+import com.lazybody.route.Waypoint
+import com.lazybody.track.TrackRecorder
 import com.lazybody.utils.MapUtils
 import com.lazybody.utils.MockFlagClearer
 import java.util.Random
@@ -59,7 +67,20 @@ class ServiceGoKt : Service(), SensorEventListener {
     private var mCurLng = DEFAULT_LNG
     private var mCurAlt = DEFAULT_ALT
     private var mCurBea = DEFAULT_BEA
-    private var mSpeed = 1.2
+    private var mSpeed = SpeedTier.WALK
+
+    /** 路线引擎实例；null 表示未配置路线。 */
+    private var mRouteEngine: RouteEngine? = null
+    /** 路线驱动中 —— 为 true 时由引擎控制位置/方位，摇杆仅作为覆盖。 */
+    private var mRouteActive: Boolean = false
+
+    /** 跨进程状态桥：供 Xposed 模块读取当前模拟快照。 */
+    private lateinit var mStateBridge: StateBridge
+
+    /** WiFi / Cell 环境配置持久化存储。 */
+    private lateinit var mEnvStore: EnvironmentConfigStore
+    private lateinit var mTrackRecorder: TrackRecorder
+    private var mLastTickNanos: Long = 0L
 
     private lateinit var mLocManager: LocationManager
     private lateinit var mSensorManager: SensorManager
@@ -82,9 +103,6 @@ class ServiceGoKt : Service(), SensorEventListener {
 
     private val mRandom = Random()
 
-    // 活动边界
-    private lateinit var boundarySimulator: BoundarySimulator
-
     override fun onBind(intent: Intent): IBinder = mBinder
 
     override fun onCreate() {
@@ -106,13 +124,16 @@ class ServiceGoKt : Service(), SensorEventListener {
         removeTestProviderFused()
         addTestProviderFused()
 
-        initGoLocation()
-
         initNotification()
 
         initJoyStick()
 
-        initBoundarySimulator()
+        mStateBridge = StateBridge(this)
+        mEnvStore = EnvironmentConfigStore(this)
+        mTrackRecorder = TrackRecorder(this)
+
+        // 最后启动定位线程，避免 Handler 在依赖字段初始化前执行。
+        initGoLocation()
     }
 
     private fun initSensors() {
@@ -133,6 +154,7 @@ class ServiceGoKt : Service(), SensorEventListener {
             mCurAlt = it.getDoubleExtra("ALT_VALUE", DEFAULT_ALT)
             mJoyStick.setCurrentPosition(mCurLng, mCurLat, mCurAlt)
         }
+        mTrackRecorder.begin(mCurLat, mCurLng, mCurAlt)
         return super.onStartCommand(intent, flags, startId)
     }
 
@@ -140,6 +162,9 @@ class ServiceGoKt : Service(), SensorEventListener {
         isStop = true
         mLocHandler.removeMessages(HANDLER_MSG_ID)
         mLocHandlerThread.quit()
+        mTrackRecorder.finish(mCurLat, mCurLng, mCurAlt, mCurBea, mSpeed.toFloat())
+
+        mStateBridge.deactivate()
 
         mSensorManager.unregisterListener(this)
 
@@ -242,12 +267,18 @@ class ServiceGoKt : Service(), SensorEventListener {
         mLocHandler = object : Handler(mLocHandlerThread.looper) {
             override fun handleMessage(msg: Message) {
                 try {
+                    // ===== 路线引擎推进 =====
+                    advanceRoute()
+
                     Thread.sleep(100)
 
                     if (!isStop) {
                         setLocationNetwork()
                         setLocationGPS()
                         setLocationFused()
+
+                        // ===== 写入跨进程状态快照 =====
+                        publishState()
 
                         sendEmptyMessage(HANDLER_MSG_ID)
                     }
@@ -258,11 +289,56 @@ class ServiceGoKt : Service(), SensorEventListener {
             }
         }
 
+        mLastTickNanos = SystemClock.elapsedRealtimeNanos()
         mLocHandler.sendEmptyMessage(HANDLER_MSG_ID)
     }
 
-    private fun initBoundarySimulator() {
-        boundarySimulator = BoundarySimulator()
+    /**
+     * 如果路线引擎活跃，按当前速度推进一小步。
+     * 推进结果同时更新 mCurLat/mCurLng/mCurBea/mSpeed。
+     */
+    private fun advanceRoute() {
+        val engine = mRouteEngine ?: return
+        if (!mRouteActive) return
+        if (engine.finished) return
+
+        val now = SystemClock.elapsedRealtimeNanos()
+        val dtSec = ((now - mLastTickNanos).coerceAtLeast(0L)).toDouble() / 1_000_000_000.0
+        mLastTickNanos = now
+
+        // 速度同步（路线模式下忽略摇杆速度，以引擎为准）
+        engine.speedMps = mSpeed
+
+        val (next, bearing) = engine.advance(dtSec) ?: return
+        mCurLat = next.lat
+        mCurLng = next.lng
+        mCurBea = bearing.toFloat()
+    }
+
+    /**
+     * 读取并对外发布当前模拟快照到 SharedPreferences，
+     * 供 Xposed 模块在目标 App 内读取并做 hook 决策。
+     */
+    private fun publishState() {
+        // 路线引擎推进时 lastTickNanos 已刷新；非路线模式也要刷新
+        if (mRouteEngine == null || !mRouteActive) {
+            mLastTickNanos = SystemClock.elapsedRealtimeNanos()
+        }
+        val state = SimulationState(
+            active = true,
+            lat = mCurLat,
+            lng = mCurLng,
+            alt = mCurAlt,
+            bearing = mCurBea,
+            speed = mSpeed.toFloat(),
+            accuracy = 5.0f,
+            timeMillis = 0L,                // 写入时会被 StateBridge 覆盖
+            elapsedRealtimeNanos = mLastTickNanos,
+            steps = 0.0,
+            cadenceSpm = 0.0
+        )
+        mStateBridge.write(state)
+        mTrackRecorder.sample(mCurLat, mCurLng, mCurAlt, mCurBea, mSpeed.toFloat())
     }
 
     private fun removeTestProviderGPS() {
@@ -306,36 +382,12 @@ class ServiceGoKt : Service(), SensorEventListener {
 
             val wgs84 = MapUtils.gcj02towgs84(mCurLng, mCurLat)
 
-            // 检查活动边界
-            if (boundarySimulator.isEnabled()) {
-                android.util.Log.d("ServiceGo", "边界检查 - 当前位置=($mCurLat, $mCurLng), 半径=${boundarySimulator.getRadius()}米")
-                val (newLat, newLng) = boundarySimulator.checkBoundaryAndUpdate(mCurLat, mCurLng, mSpeed)
-                if (newLat != mCurLat || newLng != mCurLng) {
-                    android.util.Log.d("ServiceGo", "边界触发！新位置=($newLat, $newLng)")
-                    mCurLat = newLat
-                    mCurLng = newLng
-                    // 重新计算 WGS84 坐标
-                    val newWgs84 = MapUtils.gcj02towgs84(mCurLng, mCurLat)
-                    wgs84[0] = newWgs84[0]
-                    wgs84[1] = newWgs84[1]
-
-                    // 同步返回角度到摇杆
-                    val returnAngle = boundarySimulator.getReturnAngle()
-                    if (returnAngle != 0.0) {
-                        // 角度已经是屏幕坐标系，直接使用
-                        // 角度定义：0=右, 90=上, 180=左, 270=下
-                        mJoyStick.setDirection(returnAngle, 1.0)
-                        android.util.Log.d("ServiceGo", "同步摇杆方向=${String.format("%.1f", returnAngle)}度")
-                    }
-                }
-            }
-
             XLog.d("ServiceGo: setLocationGPS - RealBearing: $mRealBearing")
 
             val loc = Location(LocationManager.GPS_PROVIDER).apply {
                 accuracy = Criteria.ACCURACY_FINE.toFloat()
                 altitude = mCurAlt + noiseAlt
-                bearing = mRealBearing
+                bearing = if (mRouteActive && mRouteEngine != null) mCurBea else mRealBearing
                 latitude = wgs84[1] + noiseLat
                 longitude = wgs84[0] + noiseLng
                 time = System.currentTimeMillis()
@@ -397,7 +449,7 @@ class ServiceGoKt : Service(), SensorEventListener {
             val loc = Location(LocationManager.NETWORK_PROVIDER).apply {
                 accuracy = Criteria.ACCURACY_COARSE.toFloat()
                 altitude = mCurAlt + noiseAlt
-                bearing = mRealBearing
+                bearing = if (mRouteActive && mRouteEngine != null) mCurBea else mRealBearing
                 latitude = wgs84[1] + noiseLat
                 longitude = wgs84[0] + noiseLng
                 time = System.currentTimeMillis()
@@ -458,7 +510,7 @@ class ServiceGoKt : Service(), SensorEventListener {
             val loc = Location("fused").apply {
                 accuracy = Criteria.ACCURACY_FINE.toFloat()
                 altitude = mCurAlt + noiseAlt
-                bearing = mRealBearing
+                bearing = if (mRouteActive && mRouteEngine != null) mCurBea else mRealBearing
                 latitude = wgs84[1] + noiseLat
                 longitude = wgs84[0] + noiseLng
                 time = System.currentTimeMillis()
@@ -500,16 +552,62 @@ class ServiceGoKt : Service(), SensorEventListener {
         fun getCurAlt(): Double = mCurAlt
         fun getCurBearing(): Float = mRealBearing
         fun getSpeed(): Double = mSpeed
-        fun setBoundaryEnabled(enabled: Boolean) {
-            boundarySimulator.setEnabled(enabled)
-            if (enabled) {
-                // 设置中心点为当前位置
-                boundarySimulator.setCenter(mCurLat, mCurLng)
+
+        // ===== 路线引擎 =====
+
+        /** 设置路线并启用。若 waypoints 少于 2 个，会静默忽略。 */
+        fun setRoute(waypoints: List<Pair<Double, Double>>, mode: String = "once", speedLabel: String = "walk") {
+            if (waypoints.size < 2) {
+                clearRoute()
+                return
             }
+            val wps = waypoints.map { (lat, lng) -> Waypoint(lat, lng) }
+            val routeMode = when (mode.lowercase()) {
+                "loop" -> RouteMode.LOOP
+                else -> RouteMode.ONCE
+            }
+            mRouteEngine = RouteEngine(wps, routeMode, SpeedTier.mpsOf(speedLabel))
+            mSpeed = SpeedTier.mpsOf(speedLabel)
+            mRouteActive = true
+            mLastTickNanos = SystemClock.elapsedRealtimeNanos()
+            XLog.d("SERVICEGO: route set, ${waypoints.size} waypoints, mode=$mode, speed=$speedLabel")
         }
-        fun setBoundaryRadius(radius: Double) {
-            boundarySimulator.setRadius(radius)
+
+        /** 清除路线，回到摇杆/单点模式。 */
+        fun clearRoute() {
+            mRouteEngine = null
+            mRouteActive = false
+            XLog.d("SERVICEGO: route cleared")
         }
-        fun isBoundaryEnabled(): Boolean = boundarySimulator.isEnabled()
+
+        /** 路线模式下切换速度档位（walk / run / drive）。 */
+        fun setRouteSpeed(label: String) {
+            mSpeed = SpeedTier.mpsOf(label)
+        }
+
+        fun isRouteActive(): Boolean = mRouteActive
+        fun isRouteFinished(): Boolean = mRouteEngine?.finished ?: false
+        fun routeProgress(): Double = mRouteEngine?.progress() ?: 0.0
+
+        // ===== 环境配置（WiFi / Cell）=====
+
+        fun setEnvironment(config: EnvironmentConfig) {
+            mEnvStore.save(config)
+            XLog.d("SERVICEGO: environment saved, wifiMode=${config.wifiMode}, cellMode=${config.cellMode}")
+        }
+
+        fun getEnvironment(): EnvironmentConfig = mEnvStore.load()
+
+        fun setWifiMode(mode: String) {
+            val m = try { EnvironmentConfig.Mode.valueOf(mode.uppercase()) } catch (_: Throwable) { EnvironmentConfig.Mode.PASSTHROUGH }
+            mEnvStore.setWifiMode(m)
+            XLog.d("SERVICEGO: wifiMode -> $mode")
+        }
+
+        fun setCellMode(mode: String) {
+            val m = try { EnvironmentConfig.Mode.valueOf(mode.uppercase()) } catch (_: Throwable) { EnvironmentConfig.Mode.PASSTHROUGH }
+            mEnvStore.setCellMode(m)
+            XLog.d("SERVICEGO: cellMode -> $mode")
+        }
     }
 }
