@@ -73,75 +73,150 @@
                 android:dividerHeight="0.5dp"/>
         </LinearLayout>
 
-        <!-- Boundary Radius Slider -->
-        <LinearLayout
-            android:id="@+id/boundary_slider_layout"
+        <!-- Route and track controls -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/route_controls"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:layout_gravity="bottom|end"
-            android:layout_marginBottom="120dp"
-            android:layout_marginStart="8dp"
-            android:layout_marginEnd="88dp"
-            android:orientation="vertical"
-            android:gravity="center_vertical"
-            android:background="@drawable/boundary_slider_bg"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="192dp"
             android:visibility="gone"
-            android:elevation="4dp">
+            app:cardBackgroundColor="?attr/colorSurface"
+            app:cardCornerRadius="20dp"
+            app:cardElevation="8dp"
+            app:strokeColor="?attr/colorOutlineVariant"
+            app:strokeWidth="1dp">
 
-            <TextView
-                android:id="@+id/tv_boundary_info"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="活动半径: 100米"
-                android:textColor="#2E7D32"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="4dp" />
-
-            <SeekBar
-                android:id="@+id/seekBarBoundary"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:min="10"
-                android:max="1000"
-                android:progress="100"
-                android:progressTint="#2E7D32"
-                android:thumbTint="#2E7D32" />
-        </LinearLayout>
+                android:orientation="vertical"
+                android:padding="16dp">
 
-        <!-- Transparent overlay to catch clicks outside slider -->
-        <View
-            android:id="@+id/boundary_overlay"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:visibility="gone"
-            android:background="@android:color/transparent" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_map"
+                        app:tint="?attr/colorPrimary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="10dp"
+                        android:text="路线与轨迹"
+                        android:textColor="?attr/colorOnSurface"
+                        android:textSize="17sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/route_info"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:lineSpacingExtra="2dp"
+                    android:text="点击地图添加路线点"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:textSize="14sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/route_mode"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_marginEnd="6dp"
+                        android:layout_weight="1"
+                        android:minWidth="0dp"
+                        android:singleLine="true"
+                        android:text="单次路线"
+                        android:textSize="14sp"
+                        app:cornerRadius="14dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/route_speed"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_marginStart="6dp"
+                        android:layout_weight="1"
+                        android:minWidth="0dp"
+                        android:singleLine="true"
+                        android:text="步行速度"
+                        android:textSize="14sp"
+                        app:cornerRadius="14dp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/route_clear"
+                        style="@style/Widget.Material3.Button.TextButton"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_marginEnd="6dp"
+                        android:layout_weight="1"
+                        android:minWidth="0dp"
+                        android:singleLine="true"
+                        android:text="撤销一点"
+                        android:textSize="14sp"
+                        app:cornerRadius="14dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/route_action"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_marginStart="6dp"
+                        android:layout_weight="1.4"
+                        android:minWidth="0dp"
+                        android:singleLine="true"
+                        android:text="开始模拟"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        app:cornerRadius="14dp" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
         <!-- FAB Layer (Top) -->
         <com.google.android.material.floatingactionbutton.FloatingActionButton
-            android:id="@+id/faBtnBoundary"
+            android:id="@+id/faBtnRoute"
+            style="@style/Widget.Material3.FloatingActionButton.Secondary"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom|end"
             android:layout_marginEnd="24dp"
             android:layout_marginBottom="120dp"
-            android:contentDescription="@null"
-            style="@style/Widget.Material3.FloatingActionButton.Secondary"
-            app:srcCompat="@drawable/ic_boundary" />
+            android:contentDescription="路线模拟与轨迹"
+            app:srcCompat="@drawable/ic_map" />
 
         <com.google.android.material.floatingactionbutton.FloatingActionButton
             android:id="@+id/faBtnStart"
+            style="@style/Widget.Material3.FloatingActionButton.Primary"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom|end"
             android:layout_marginEnd="24dp"
             android:layout_marginBottom="48dp"
-            android:contentDescription="@null"
-            style="@style/Widget.Material3.FloatingActionButton.Primary"
+            android:contentDescription="启动或停止模拟定位"
             app:srcCompat="@drawable/ic_position" />
 
     </FrameLayout>

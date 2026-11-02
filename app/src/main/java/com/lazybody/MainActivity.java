@@ -17,6 +17,8 @@ import android.hardware.SensorManager;
 import android.location.Address;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
@@ -30,7 +32,6 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.RadioGroup;
-import android.widget.SeekBar;
 import android.widget.SimpleAdapter;
 import android.widget.TextView;
 
@@ -54,6 +55,8 @@ import org.osmdroid.views.overlay.TilesOverlay;
 import com.lazybody.database.DataBaseHistoryLocation;
 import com.lazybody.database.DataBaseHistorySearch;
 import com.lazybody.service.ServiceGoKt;
+import com.lazybody.track.TrackRecord;
+import com.lazybody.track.TrackStore;
 
 import com.lazybody.utils.GCJ02LocationProvider;
 import com.lazybody.utils.GoUtils;
@@ -68,6 +71,7 @@ import org.osmdroid.util.GeoPoint;
 import org.osmdroid.views.MapView;
 import org.osmdroid.views.overlay.MapEventsOverlay;
 import org.osmdroid.views.overlay.Marker;
+import org.osmdroid.views.overlay.Polyline;
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
 
 import java.util.ArrayList;
@@ -91,9 +95,6 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
     private OkHttpClient mOkHttpClient;
     private SharedPreferences sharedPreferences;
-
-    /* ============================== 活动边界 相关 ============================== */
-    private boolean isBoundaryEnabled = false;
 
     /* ============================== 主界面地图 相关 ============================== */
     /************** 地图 *****************/
@@ -136,12 +137,60 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
     private double mCurrentZoom = 16.0;
 
-    /* ============================== 活动边界 可视化 相关 ============================== */
-    private LinearLayout mBoundarySliderLayout;
-    private SeekBar mSeekBarBoundary;
-    private TextView mTvBoundaryInfo;
-    private org.osmdroid.views.overlay.Polygon mBoundaryCircle;
-    private View mBoundaryOverlay;
+    private final ArrayList<GeoPoint> mRoutePoints = new ArrayList<>();
+    private Polyline mRouteLine;
+    private Polyline mTrackLine;
+    private Marker mRoutePositionMarker;
+    private Marker mReplayMarker;
+    private View mRouteControls;
+    private TextView mRouteInfo;
+    private Button mRouteModeButton;
+    private Button mRouteSpeedButton;
+    private Button mRouteClearButton;
+    private Button mRouteActionButton;
+    private boolean mRouteEditing = false;
+    private boolean mRouteActive = false;
+    private boolean mPendingRouteStart = false;
+    private String mRouteMode = "once";
+    private String mRouteSpeed = "walk";
+    private TrackRecord mReplayTrack;
+    private int mReplayIndex = 0;
+    private boolean mReplayPlaying = false;
+    private final Handler mUiHandler = new Handler(Looper.getMainLooper());
+
+    private final Runnable mRouteUpdater = new Runnable() {
+        @Override
+        public void run() {
+            if (mServiceBinder != null && mRouteActive) {
+                GeoPoint position = new GeoPoint(mServiceBinder.getCurLat(), mServiceBinder.getCurLng());
+                showRoutePosition(position);
+                int progress = (int) Math.round(mServiceBinder.routeProgress() * 100.0);
+                mRouteInfo.setText(mServiceBinder.isRouteFinished()
+                        ? "路线已完成 · 点击结束返回编辑"
+                        : String.format(Locale.getDefault(), "路线模拟中 · %d%% · %.1f m/s", progress, mServiceBinder.getSpeed()));
+            }
+            mUiHandler.postDelayed(this, 500L);
+        }
+    };
+
+    private final Runnable mReplayUpdater = new Runnable() {
+        @Override
+        public void run() {
+            if (!mReplayPlaying || mReplayTrack == null || mReplayMarker == null) return;
+            if (mReplayIndex >= mReplayTrack.getPoints().size()) {
+                mReplayPlaying = false;
+                mRouteInfo.setText("轨迹回放完成 · 点击按钮重新回放");
+                mRouteActionButton.setText("重新回放");
+                return;
+            }
+            com.lazybody.track.TrackPoint point = mReplayTrack.getPoints().get(mReplayIndex);
+            mReplayMarker.setPosition(new GeoPoint(point.getLat(), point.getLng()));
+            mRouteInfo.setText(String.format(Locale.getDefault(), "轨迹回放 · %d/%d", mReplayIndex + 1, mReplayTrack.getPoints().size()));
+            mReplayIndex++;
+            mMapView.invalidate();
+            mUiHandler.postDelayed(this, 250L);
+        }
+    };
 
     @Override
     protected void onSaveInstanceState(@NonNull Bundle outState) {
@@ -206,16 +255,23 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         initMapButton();
 
         initGoBtn();
+        initRouteControls();
+        mUiHandler.post(mRouteUpdater);
 
         mConnection = new ServiceConnection() {
             @Override
             public void onServiceConnected(ComponentName name, IBinder service) {
                 mServiceBinder = (ServiceGoKt.ServiceGoBinder) service;
+                if (mPendingRouteStart) {
+                    mPendingRouteStart = false;
+                    startConfiguredRoute();
+                }
             }
 
             @Override
             public void onServiceDisconnected(ComponentName name) {
-
+                mServiceBinder = null;
+                mRouteActive = false;
             }
         };
 
@@ -245,7 +301,15 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     }
 
     private void handleIntent(Intent intent) {
-        if (intent != null && intent.getBooleanExtra("SHOW_LOCATION", false)) {
+        if (intent != null && intent.getBooleanExtra("SHOW_TRACK", false)) {
+            String trackId = intent.getStringExtra("TRACK_ID");
+            TrackRecord track = trackId == null ? null : TrackStore.load(this, trackId);
+            if (track != null) {
+                showTrack(track);
+            } else {
+                GoUtils.DisplayToast(this, "轨迹不存在或已损坏");
+            }
+        } else if (intent != null && intent.getBooleanExtra("SHOW_LOCATION", false)) {
             String name = intent.getStringExtra("NAME");
             String lngStr = intent.getStringExtra("LNG");
             String latStr = intent.getStringExtra("LAT");
@@ -306,6 +370,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     @Override
     protected void onDestroy() {
         XLog.i("MainActivity: onDestroy");
+        mUiHandler.removeCallbacksAndMessages(null);
 
         if (isMockServStart) {
             unbindService(mConnection);
@@ -531,9 +596,13 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         MapEventsOverlay mapEventsOverlay = new MapEventsOverlay(new MapEventsReceiver() {
             @Override
             public boolean singleTapConfirmedHelper(GeoPoint p) {
-                mMarkLatLngMap = p;
-                mMarkName = null;
-                markMap();
+                if (mRouteEditing && !mRouteActive) {
+                    addRoutePoint(p);
+                } else {
+                    mMarkLatLngMap = p;
+                    mMarkName = null;
+                    markMap();
+                }
                 return true;
             }
 
@@ -804,145 +873,6 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     private void initGoBtn() {
         mButtonStart = findViewById(R.id.faBtnStart);
         mButtonStart.setOnClickListener(this::doGoLocation);
-
-        // 初始化边界滑动条
-        initBoundarySlider();
-
-        // 活动边界按钮
-        FloatingActionButton btnBoundary = findViewById(R.id.faBtnBoundary);
-        btnBoundary.setOnClickListener(v -> {
-            if (isMockServStart) {
-                isBoundaryEnabled = !isBoundaryEnabled;
-                XLog.d("边界按钮点击: isBoundaryEnabled=" + isBoundaryEnabled);
-                if (isBoundaryEnabled) {
-                    GoUtils.DisplayToast(this, "活动边界已开启");
-                    btnBoundary.setImageResource(R.drawable.ic_boundary_on);
-                    // 显示滑动条（带动画）
-                    showBoundarySlider();
-                    drawBoundaryCircle();
-                } else {
-                    GoUtils.DisplayToast(this, "活动边界已关闭");
-                    btnBoundary.setImageResource(R.drawable.ic_boundary);
-                    // 隐藏滑动条（带动画）
-                    hideBoundarySlider();
-                    removeBoundaryCircle();
-                }
-                // 更新服务状态
-                if (mServiceBinder != null) {
-                    mServiceBinder.setBoundaryEnabled(isBoundaryEnabled);
-                }
-            } else {
-                GoUtils.DisplayToast(this, "请先启动模拟定位");
-            }
-        });
-    }
-
-    private void initBoundarySlider() {
-        mBoundarySliderLayout = findViewById(R.id.boundary_slider_layout);
-        mSeekBarBoundary = findViewById(R.id.seekBarBoundary);
-        mTvBoundaryInfo = findViewById(R.id.tv_boundary_info);
-        mBoundaryOverlay = findViewById(R.id.boundary_overlay);
-
-        // 设置初始位置在屏幕右边（隐藏状态）
-        mBoundarySliderLayout.setTranslationX(500f);
-
-        mSeekBarBoundary.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if (fromUser) {
-                    mTvBoundaryInfo.setText(String.format("活动半径: %d米", progress));
-                    if (mServiceBinder != null) {
-                        mServiceBinder.setBoundaryRadius(progress);
-                    }
-                    drawBoundaryCircle();
-                }
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {}
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {}
-        });
-
-        // 点击遮罩层时隐藏滑动条
-        mBoundaryOverlay.setOnClickListener(v -> {
-            hideBoundarySlider();
-        });
-    }
-
-    private void showBoundarySlider() {
-        mBoundaryOverlay.setVisibility(View.VISIBLE);
-        mBoundarySliderLayout.setVisibility(View.VISIBLE);
-        mBoundarySliderLayout.animate()
-                .translationX(0f)
-                .setDuration(300)
-                .setInterpolator(new android.view.animation.DecelerateInterpolator())
-                .start();
-    }
-
-    private void hideBoundarySlider() {
-        mBoundarySliderLayout.animate()
-                .translationX(500f)
-                .setDuration(300)
-                .setInterpolator(new android.view.animation.AccelerateInterpolator())
-                .withEndAction(() -> {
-                    mBoundarySliderLayout.setVisibility(View.GONE);
-                    mBoundaryOverlay.setVisibility(View.GONE);
-                })
-                .start();
-    }
-
-    private void drawBoundaryCircle() {
-        if (mMapView == null) return;
-
-        // 使用当前模拟位置作为中心点
-        org.osmdroid.util.GeoPoint centerPoint = null;
-        if (mServiceBinder != null && isMockServStart) {
-            double lat = mServiceBinder.getCurLat();
-            double lng = mServiceBinder.getCurLng();
-            centerPoint = new org.osmdroid.util.GeoPoint(lat, lng);
-        } else if (mMarkLatLngMap != null) {
-            centerPoint = mMarkLatLngMap;
-        }
-
-        if (centerPoint == null) return;
-
-        XLog.d("drawBoundaryCircle: 中心点=" + centerPoint.getLatitude() + "," + centerPoint.getLongitude());
-
-        // 移除旧的边界圆
-        removeBoundaryCircle();
-
-        // 获取当前半径
-        int radius = mSeekBarBoundary.getProgress();
-
-        XLog.d("drawBoundaryCircle: 半径=" + radius + "米");
-
-        // 创建边界圆
-        mBoundaryCircle = new org.osmdroid.views.overlay.Polygon();
-        mBoundaryCircle.setFillColor(android.graphics.Color.argb(30, 0, 150, 255));
-        mBoundaryCircle.setStrokeColor(android.graphics.Color.argb(100, 0, 150, 255));
-        mBoundaryCircle.setStrokeWidth(2f);
-
-        // 生成圆的点
-        java.util.List<org.osmdroid.util.GeoPoint> circlePoints = new java.util.ArrayList<>();
-        for (int i = 0; i <= 360; i += 10) {
-            double lat = centerPoint.getLatitude() + (radius / 111319.9) * Math.cos(Math.toRadians(i));
-            double lng = centerPoint.getLongitude() + (radius / (111319.9 * Math.cos(Math.toRadians(centerPoint.getLatitude())))) * Math.sin(Math.toRadians(i));
-            circlePoints.add(new org.osmdroid.util.GeoPoint(lat, lng));
-        }
-        mBoundaryCircle.setPoints(circlePoints);
-
-        mMapView.getOverlays().add(mBoundaryCircle);
-        mMapView.invalidate();
-    }
-
-    private void removeBoundaryCircle() {
-        if (mBoundaryCircle != null && mMapView != null) {
-            mMapView.getOverlays().remove(mBoundaryCircle);
-            mBoundaryCircle = null;
-            mMapView.invalidate();
-        }
     }
 
     private void startGoLocation() {
@@ -967,7 +897,15 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         unbindService(mConnection);
         Intent serviceGoIntent = new Intent(MainActivity.this, ServiceGoKt.class);
         stopService(serviceGoIntent);
+        mServiceBinder = null;
+        mRouteActive = false;
+        mPendingRouteStart = false;
         isMockServStart = false;
+        if (mRoutePositionMarker != null) {
+            mMapView.getOverlays().remove(mRoutePositionMarker);
+            mRoutePositionMarker = null;
+        }
+        updateRoutePanel();
     }
 
     private void doGoLocation(View v) {
@@ -1035,6 +973,247 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                 }
             }
         }
+    }
+
+    private void initRouteControls() {
+        mRouteControls = findViewById(R.id.route_controls);
+        mRouteInfo = findViewById(R.id.route_info);
+        mRouteModeButton = findViewById(R.id.route_mode);
+        mRouteSpeedButton = findViewById(R.id.route_speed);
+        mRouteClearButton = findViewById(R.id.route_clear);
+        mRouteActionButton = findViewById(R.id.route_action);
+
+        findViewById(R.id.faBtnRoute).setOnClickListener(v -> {
+            if (mReplayTrack != null) closeReplay();
+            mRouteEditing = !mRouteActive && !mRouteEditing;
+            mRouteControls.setVisibility(mRouteEditing || mRouteActive ? View.VISIBLE : View.GONE);
+            updateRoutePanel();
+        });
+
+        mRouteModeButton.setOnClickListener(v -> {
+            mRouteMode = mRouteMode.equals("once") ? "loop" : "once";
+            updateRoutePanel();
+        });
+
+        mRouteSpeedButton.setOnClickListener(v -> {
+            if (mRouteSpeed.equals("walk")) mRouteSpeed = "run";
+            else if (mRouteSpeed.equals("run")) mRouteSpeed = "drive";
+            else mRouteSpeed = "walk";
+            if (mServiceBinder != null && mRouteActive) mServiceBinder.setRouteSpeed(mRouteSpeed);
+            updateRoutePanel();
+        });
+
+        mRouteClearButton.setOnClickListener(v -> {
+            if (mReplayTrack != null) {
+                closeReplay();
+                mRouteControls.setVisibility(View.GONE);
+            } else if (!mRoutePoints.isEmpty()) {
+                mRoutePoints.remove(mRoutePoints.size() - 1);
+                drawRouteLine();
+                updateRoutePanel();
+            }
+        });
+
+        mRouteActionButton.setOnClickListener(v -> {
+            if (mReplayTrack != null) {
+                if (mReplayPlaying) {
+                    pauseReplay();
+                } else {
+                    resumeReplay();
+                }
+            } else if (mRouteActive) {
+                stopRouteSimulation();
+            } else {
+                startRouteSimulation();
+            }
+        });
+        updateRoutePanel();
+    }
+
+    private void updateRoutePanel() {
+        if (mReplayTrack != null) return;
+        mRouteModeButton.setVisibility(View.VISIBLE);
+        mRouteSpeedButton.setVisibility(View.VISIBLE);
+        mRouteClearButton.setVisibility(View.VISIBLE);
+        mRouteModeButton.setEnabled(!mRouteActive);
+        mRouteClearButton.setEnabled(!mRouteActive);
+        mRouteModeButton.setText(mRouteMode.equals("once") ? "模式：单次" : "模式：循环");
+        mRouteSpeedButton.setText(mRouteSpeed.equals("walk") ? "速度：步行" : mRouteSpeed.equals("run") ? "速度：跑步" : "速度：驾车");
+        mRouteClearButton.setText("撤销一点");
+        mRouteActionButton.setText(mRouteActive ? "结束路线" : "开始模拟");
+        if (!mRouteActive) {
+            mRouteInfo.setText(mRoutePoints.isEmpty()
+                    ? "点击地图依次添加路径点，至少设置 2 个点"
+                    : String.format(Locale.getDefault(), "已设置 %d 个路径点，可继续添加或开始模拟", mRoutePoints.size()));
+        }
+    }
+
+    private void addRoutePoint(GeoPoint point) {
+        mRoutePoints.add(point);
+        drawRouteLine();
+        updateRoutePanel();
+        if (mRoutePoints.size() == 1) mMapController.animateTo(point);
+    }
+
+    private void drawRouteLine() {
+        if (mRouteLine != null) mMapView.getOverlays().remove(mRouteLine);
+        mRouteLine = null;
+        if (mRoutePoints.size() >= 2) {
+            mRouteLine = new Polyline(mMapView);
+            mRouteLine.setPoints(new ArrayList<>(mRoutePoints));
+            mRouteLine.getOutlinePaint().setColor(android.graphics.Color.rgb(0, 150, 255));
+            mRouteLine.getOutlinePaint().setStrokeWidth(8f);
+            mMapView.getOverlays().add(mRouteLine);
+        }
+        mMapView.invalidate();
+    }
+
+    private void startRouteSimulation() {
+        if (mRoutePoints.size() < 2) {
+            GoUtils.DisplayToast(this, "请先在地图上设置至少 2 个路线点");
+            return;
+        }
+        if (!GoUtils.isNetworkAvailable(this) || !GoUtils.isGpsOpened(this)) {
+            GoUtils.DisplayToast(this, "请检查网络和 GPS 后重试");
+            return;
+        }
+        if (!Settings.canDrawOverlays(getApplicationContext())) {
+            GoUtils.showEnableFloatWindowDialog(this);
+            return;
+        }
+        if (!GoUtils.isAllowMockLocation(this)) {
+            GoUtils.showEnableMockLocationDialog(this);
+            return;
+        }
+        if (!isMockServStart) {
+            mMarkLatLngMap = mRoutePoints.get(0);
+            mPendingRouteStart = true;
+            startGoLocation();
+            mMarkLatLngMap = null;
+            mButtonStart.setImageResource(R.drawable.ic_fly);
+        } else {
+            startConfiguredRoute();
+        }
+    }
+
+    private void startConfiguredRoute() {
+        if (mServiceBinder == null) {
+            mPendingRouteStart = true;
+            return;
+        }
+        List<kotlin.Pair<Double, Double>> waypoints = new ArrayList<>();
+        for (GeoPoint point : mRoutePoints) {
+            waypoints.add(new kotlin.Pair<>(point.getLatitude(), point.getLongitude()));
+        }
+        mServiceBinder.setPosition(mRoutePoints.get(0).getLongitude(), mRoutePoints.get(0).getLatitude(),
+                Double.parseDouble(sharedPreferences.getString("setting_altitude", "55.0")));
+        mServiceBinder.setRoute(waypoints, mRouteMode, mRouteSpeed);
+        mRouteActive = true;
+        mRouteEditing = false;
+        mRouteControls.setVisibility(View.VISIBLE);
+        updateRoutePanel();
+        GoUtils.DisplayToast(this, "路线模拟已启动，轨迹将自动录制");
+    }
+
+    private void stopRouteSimulation() {
+        if (mServiceBinder != null) mServiceBinder.clearRoute();
+        mRouteActive = false;
+        mRouteEditing = true;
+        if (mRoutePositionMarker != null) {
+            mMapView.getOverlays().remove(mRoutePositionMarker);
+            mRoutePositionMarker = null;
+        }
+        updateRoutePanel();
+        GoUtils.DisplayToast(this, "路线模拟已结束；停止模拟定位后会保存轨迹");
+    }
+
+    private void showRoutePosition(GeoPoint position) {
+        if (mRoutePositionMarker == null) {
+            mRoutePositionMarker = new Marker(mMapView);
+            mRoutePositionMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER);
+            mRoutePositionMarker.setIcon(androidx.core.content.ContextCompat.getDrawable(this, R.drawable.ic_mylocation_dot));
+            mMapView.getOverlays().add(mRoutePositionMarker);
+        }
+        mRoutePositionMarker.setPosition(position);
+        mMapView.invalidate();
+    }
+
+    private void showTrack(TrackRecord track) {
+        closeReplay();
+        if (mTrackLine != null) mMapView.getOverlays().remove(mTrackLine);
+        List<GeoPoint> points = new ArrayList<>();
+        for (com.lazybody.track.TrackPoint point : track.getPoints()) {
+            points.add(new GeoPoint(point.getLat(), point.getLng()));
+        }
+        if (points.isEmpty()) {
+            GoUtils.DisplayToast(this, "该轨迹没有可显示的位置点");
+            return;
+        }
+        mTrackLine = new Polyline(mMapView);
+        mTrackLine.setPoints(points);
+        mTrackLine.getOutlinePaint().setColor(android.graphics.Color.rgb(255, 87, 34));
+        mTrackLine.getOutlinePaint().setStrokeWidth(8f);
+        mMapView.getOverlays().add(mTrackLine);
+        mReplayTrack = track;
+        mReplayMarker = new Marker(mMapView);
+        mReplayMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER);
+        mReplayMarker.setIcon(androidx.core.content.ContextCompat.getDrawable(this, R.drawable.ic_mylocation_dot));
+        mMapView.getOverlays().add(mReplayMarker);
+        mRouteControls.setVisibility(View.VISIBLE);
+        mRouteModeButton.setVisibility(View.GONE);
+        mRouteSpeedButton.setVisibility(View.GONE);
+        mRouteClearButton.setVisibility(View.VISIBLE);
+        mRouteClearButton.setEnabled(true);
+        mRouteClearButton.setText("关闭");
+        mRouteActionButton.setText("重新回放");
+        mMapController.setZoom(16.0);
+        mMapController.setCenter(points.get(0));
+        startReplay();
+    }
+
+    private void startReplay() {
+        if (mReplayTrack == null || mReplayTrack.getPoints().isEmpty()) return;
+        mUiHandler.removeCallbacks(mReplayUpdater);
+        mReplayIndex = 0;
+        mReplayPlaying = true;
+        mReplayMarker.setPosition(new GeoPoint(mReplayTrack.getPoints().get(0).getLat(), mReplayTrack.getPoints().get(0).getLng()));
+        mRouteActionButton.setText("暂停回放");
+        mUiHandler.post(mReplayUpdater);
+    }
+
+    private void pauseReplay() {
+        if (mReplayTrack == null || !mReplayPlaying) return;
+        mReplayPlaying = false;
+        mUiHandler.removeCallbacks(mReplayUpdater);
+        mRouteInfo.setText(String.format(Locale.getDefault(), "轨迹回放已暂停 · %d/%d",
+                mReplayIndex, mReplayTrack.getPoints().size()));
+        mRouteActionButton.setText("继续回放");
+    }
+
+    private void resumeReplay() {
+        if (mReplayTrack == null || mReplayTrack.getPoints().isEmpty()) return;
+        if (mReplayIndex >= mReplayTrack.getPoints().size()) {
+            startReplay();
+            return;
+        }
+        mReplayPlaying = true;
+        mRouteActionButton.setText("暂停回放");
+        mUiHandler.post(mReplayUpdater);
+    }
+
+    private void closeReplay() {
+        mUiHandler.removeCallbacks(mReplayUpdater);
+        mReplayPlaying = false;
+        mReplayTrack = null;
+        if (mReplayMarker != null) {
+            mMapView.getOverlays().remove(mReplayMarker);
+            mReplayMarker = null;
+        }
+        if (mTrackLine != null) {
+            mMapView.getOverlays().remove(mTrackLine);
+            mTrackLine = null;
+        }
+        mMapView.invalidate();
     }
 
     private void initStoreHistory() {

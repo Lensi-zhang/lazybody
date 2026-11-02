@@ -27,7 +27,9 @@ import android.view.Gravity;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Objects;
 import java.util.Locale;
@@ -35,6 +37,8 @@ import java.util.List;
 import java.util.Map;
 
 import com.lazybody.database.DataBaseHistoryLocation;
+import com.lazybody.track.TrackRecord;
+import com.lazybody.track.TrackStore;
 import com.lazybody.utils.GoUtils;
 
 public class HistoryActivity extends BaseActivity {
@@ -163,6 +167,18 @@ public class HistoryActivity extends BaseActivity {
             Log.e("HistoryActivity", "ERROR - fetchAllRecord");
         }
 
+        for (TrackRecord track : TrackStore.list(this)) {
+            Map<String, Object> item = new HashMap<>();
+            long durationSeconds = Math.max(0L, (track.getEndTime() - track.getStartTime()) / 1000L);
+            item.put(KEY_ID, "track:" + track.getId());
+            item.put(KEY_LOCATION, "[轨迹] " + track.getName());
+            item.put(KEY_TIME, SimpleDateFormat.getDateTimeInstance().format(new Date(track.getStartTime())));
+            item.put(KEY_LNG_LAT_WGS, String.format(Locale.getDefault(), "%d 个点 · %.0f 米 · %d 分 %d 秒",
+                    track.getPoints().size(), track.getDistance(), durationSeconds / 60L, durationSeconds % 60L));
+            item.put(KEY_LNG_LAT_CUSTOM, "");
+            data.add(item);
+        }
+
         return data;
     }
 
@@ -189,6 +205,7 @@ public class HistoryActivity extends BaseActivity {
         try {
             if (ID <= -1) {
                 mHistoryLocationDB.delete(DataBaseHistoryLocation.TABLE_NAME,null, null);
+                TrackStore.deleteAll(this);
             } else {
                 mHistoryLocationDB.delete(DataBaseHistoryLocation.TABLE_NAME,
                         DataBaseHistoryLocation.DB_COLUMN_ID + " = ?", new String[] {Integer.toString(ID)});
@@ -260,7 +277,9 @@ public class HistoryActivity extends BaseActivity {
         builder.setTitle("警告");
         builder.setMessage("确定要删除该项历史记录吗?");
         builder.setPositiveButton("确定", (dialog, whichButton) -> {
-            boolean deleteRet = deleteRecord(Integer.parseInt(locID));
+            boolean deleteRet = locID.startsWith("track:")
+                    ? TrackStore.delete(this, locID.substring(6))
+                    : deleteRecord(Integer.parseInt(locID));
             if (deleteRet) {
                 GoUtils.DisplayToast(HistoryActivity.this, getResources().getString(R.string.history_delete_ok));
                 updateRecordList();
@@ -313,6 +332,15 @@ public class HistoryActivity extends BaseActivity {
         mSearchLayout = findViewById(R.id.search_linear);
         mRecordListView = findViewById(R.id.record_list_view);
         mRecordListView.setOnItemClickListener((adapterView, view, i, l) -> {
+            String recordId = ((TextView) view.findViewById(R.id.LocationID)).getText().toString();
+            if (recordId.startsWith("track:")) {
+                Intent intent = new Intent(HistoryActivity.this, MainActivity.class);
+                intent.putExtra("SHOW_TRACK", true);
+                intent.putExtra("TRACK_ID", recordId.substring(6));
+                startActivity(intent);
+                this.finish();
+                return;
+            }
             String name;
             name = (String) ((TextView) view.findViewById(R.id.LocationText)).getText();
             
@@ -343,7 +371,8 @@ public class HistoryActivity extends BaseActivity {
         mRecordListView.setOnItemLongClickListener((parent, view, position, id) -> {
             PopupMenu popupMenu = new PopupMenu(HistoryActivity.this, view);
             popupMenu.setGravity(Gravity.END | Gravity.BOTTOM);
-            popupMenu.getMenu().add("编辑");
+            String recordId = ((TextView) view.findViewById(R.id.LocationID)).getText().toString();
+            if (!recordId.startsWith("track:")) popupMenu.getMenu().add("编辑");
             popupMenu.getMenu().add("删除");
 
             popupMenu.setOnMenuItemClickListener(item -> {
