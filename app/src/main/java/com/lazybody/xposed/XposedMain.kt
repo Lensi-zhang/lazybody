@@ -1,7 +1,6 @@
 package com.lazybody.xposed
 
 import android.content.ContentResolver
-import android.content.Context
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -29,6 +28,7 @@ import com.lazybody.tencent.TencentSdkHook
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XC_MethodReplacement
+import de.robv.android.xposed.XSharedPreferences
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
@@ -45,11 +45,11 @@ import java.util.concurrent.CopyOnWriteArrayList
  *
  * 模块职责：
  *  1) Location 反检测 —— 抹除 isMock/isFromMockProvider、setMock、IPC 字段、Listener Proxy 包装
- *  2) GnssStatus 完整伪造 —— 7 颗 GPS 卫星 + 1s 定时器回调注入
- *  3) WiFi / Cell 屏蔽 —— scanResults / getAllCellInfo 返回空
+ *  2) GnssStatus 完整伪造 —— 合成星座 + 1s 定时器回调注入
+ *  3) WiFi / Cell 环境 —— 支持真实、隐藏和伪造三种模式
  *  4) Provider 列表清理 + 非标准 Provider 禁用
  *  5) Settings.Secure "mock_location" 清零
- *  6) 跨进程状态桥读取（readSimulationState）——当前仅调试用途，后续让 hook 感知状态做动态决策
+ *  6) 跨进程状态桥读取 —— 为环境、传感器和腾讯定位 Hook 提供实时状态
  */
 class XposedMain : IXposedHookLoadPackage {
 
@@ -98,14 +98,11 @@ class XposedMain : IXposedHookLoadPackage {
             } catch (_: Throwable) {}
         }
 
-        /**
-         * 尝试读取 App 侧写入的 SimulationState 并检查 TTL 新鲜度。
-         * 当前版本仅调试用途；后续让 hook 根据状态做动态决策（例如 fake_wifi 开关）。
-         */
-        fun readSimulationState(context: Context?): SimulationState {
-            context ?: return SimulationState.INACTIVE
+        /** 读取 App 侧写入的 SimulationState，并丢弃非激活或超过 TTL 的快照。 */
+        fun readSimulationState(): SimulationState {
             return try {
-                val sp = android.preference.PreferenceManager.getDefaultSharedPreferences(context)
+                val sp = XSharedPreferences("com.lazybody", StateBridge.PREFS_NAME)
+                sp.reload()
                 val json = sp.getString(StateBridge.KEY_STATE, null)
                 val state = SimulationState.fromJson(json)
                 if (!state.isFresh(SystemClock.elapsedRealtimeNanos(), TTL_NANOS)) {
@@ -138,7 +135,7 @@ class XposedMain : IXposedHookLoadPackage {
             hookPackageManagerGetPermission(lpparam.classLoader)
 
             // ——— 新增：传感器/计步伪造 ———
-            hookSensor(lpparam.classLoader)
+            hookSensor()
 
             // ——— 新增：腾讯/高德 SDK 动态扫描 hook ———
             TencentSdkHook.tryHook(lpparam)
@@ -322,7 +319,7 @@ class XposedMain : IXposedHookLoadPackage {
                 WifiManager::class.java, "getScanResults",
                 object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
-                        val cfg = readEnvironmentConfig(getAppContext())
+                        val cfg = readEnvironmentConfig()
                         when (cfg.wifiMode) {
                             EnvironmentConfig.Mode.PASSTHROUGH -> return
                             EnvironmentConfig.Mode.HIDE -> param.setResult(ArrayList<Any>())
@@ -346,7 +343,7 @@ class XposedMain : IXposedHookLoadPackage {
                 WifiManager::class.java, "getConnectionInfo",
                 object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
-                        val cfg = readEnvironmentConfig(getAppContext())
+                        val cfg = readEnvironmentConfig()
                         when (cfg.wifiMode) {
                             EnvironmentConfig.Mode.HIDE -> {
                                 param.setResult(null)
@@ -388,7 +385,7 @@ class XposedMain : IXposedHookLoadPackage {
                 TelephonyManager::class.java, "getCellLocation",
                 object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
-                        val cfg = readEnvironmentConfig(getAppContext())
+                        val cfg = readEnvironmentConfig()
                         when (cfg.cellMode) {
                             EnvironmentConfig.Mode.HIDE -> param.setResult(null)
                             EnvironmentConfig.Mode.FORGE -> {
@@ -413,7 +410,7 @@ class XposedMain : IXposedHookLoadPackage {
                 TelephonyManager::class.java, "getAllCellInfo",
                 object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
-                        val cfg = readEnvironmentConfig(getAppContext())
+                        val cfg = readEnvironmentConfig()
                         when (cfg.cellMode) {
                             EnvironmentConfig.Mode.HIDE -> param.setResult(ArrayList<Any>())
                             EnvironmentConfig.Mode.FORGE -> {
@@ -581,23 +578,10 @@ class XposedMain : IXposedHookLoadPackage {
     // 2.4) 环境配置读取（从 App 的 SharedPreferences）
     // =========================================================================
 
-    /** 懒加载的 context 缓存。Xposed hook 时 context 可能还没完全初始化， */
-    private var cachedAppContext: Context? = null
-
-    private fun getAppContext(): Context? {
-        cachedAppContext?.let { return it }
-        try {
-            val appClass = Class.forName("android.app.ActivityThread")
-            val currentApp = XposedHelpers.callStaticMethod(appClass, "currentApplication") as? Context
-            currentApp?.let { cachedAppContext = it }
-            return currentApp
-        } catch (_: Throwable) { return null }
-    }
-
-    private fun readEnvironmentConfig(context: Context?): EnvironmentConfig {
-        context ?: return EnvironmentConfig.DEFAULT
+    private fun readEnvironmentConfig(): EnvironmentConfig {
         return try {
-            val sp = android.preference.PreferenceManager.getDefaultSharedPreferences(context)
+            val sp = XSharedPreferences("com.lazybody", StateBridge.PREFS_NAME)
+            sp.reload()
             val json = sp.getString(EnvironmentConfigStore.KEY_CONFIG, null)
             if (json.isNullOrBlank()) {
                 // 兼容：老版本可能只写了 wifi_mode / cell_mode 独立键
@@ -628,13 +612,15 @@ class XposedMain : IXposedHookLoadPackage {
             val callbackClass = Class.forName("android.location.GnssStatus\$Callback")
             val registerHook = object : XC_MethodReplacement() {
                 override fun replaceHookedMethod(param: MethodHookParam): Any? {
-                    val cb = param.args[0]
+                    val cb = param.args.firstOrNull { it != null && callbackClass.isInstance(it) }
                     if (cb != null && cb !in callbacks) callbacks.add(cb)
                     return true
                 }
             }
-            try { XposedHelpers.findAndHookMethod(LocationManager::class.java, "registerGnssStatusCallback", callbackClass, registerHook) } catch (_: Throwable) {}
-            try { XposedHelpers.findAndHookMethod(LocationManager::class.java, "registerGnssStatusCallback", callbackClass, Handler::class.java, registerHook) } catch (_: Throwable) {}
+            // 同时覆盖 Callback、Handler 和 Android 11+ 的 Executor 重载。
+            XposedBridge.hookAllMethods(
+                LocationManager::class.java, "registerGnssStatusCallback", registerHook
+            )
 
             try {
                 XposedHelpers.findAndHookMethod(LocationManager::class.java, "unregisterGnssStatusCallback", callbackClass,
@@ -669,76 +655,94 @@ class XposedMain : IXposedHookLoadPackage {
         }
     }
 
-    /**
-     * 用 GnssStatus.Builder.addSatellite 构造真实的星座对象。
-     *
-     * 策略：优先用反射调用 addSatellite，参数类型匹配让 Android 自己选
-     * 重载；从 6 参数（API 24）逐步升级到 API 37+ 的完整参数集，直到成功。
-     *
-     * 签名（Android 11, API 30）:
-     *   addSatellite(int constellationType, int svid, float cn0DbHz,
-     *       float elevationDegrees, float azimuthDegrees,
-     *       boolean usedInFix)
-     *
-     * 签名（Android 10+, API 29）: 同上 + signalStrength/snr/carrier/baseband 4 个
-     * 签名（Android 15+）: 再追加 2 个参数。
-     */
+    /** 按系统版本构造 GnssStatus，并注入 GpsEngine 生成的星座。 */
     private fun buildFakeGnssStatus(): android.location.GnssStatus? {
         val satellites = try { gpsEngine.snapshot() } catch (_: Throwable) { return null }
+        if (satellites.isEmpty()) return null
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            buildModernGnssStatus(satellites)
+        } else {
+            buildLegacyGnssStatus(satellites)
+        }
+    }
+
+    /** Android 12+ 使用公开 Builder，避免依赖已变化的隐藏字段。 */
+    private fun buildModernGnssStatus(
+        satellites: List<com.lazybody.gnss.GnssSatellite>
+    ): android.location.GnssStatus? {
         return try {
             val builder = android.location.GnssStatus.Builder()
-            var anySuccess = true
             for (s in satellites) {
-                if (!tryAddSatellite(builder, s)) anySuccess = false
-            }
-            if (!anySuccess && satellites.isNotEmpty()) {
-                // 至少要添加一颗，否则 build() 可能抛异常
-                tryAddSatellite(builder, satellites.first())
+                XposedHelpers.callMethod(
+                    builder, "addSatellite",
+                    s.constellationType, s.svid, s.cn0DbHz,
+                    s.elevationDegrees, s.azimuthDegrees, s.usedInFix
+                )
             }
             builder.build()
-        } catch (t: Throwable) {
-            XposedBridge.log(t)
+        } catch (_: Throwable) {
             null
         }
     }
 
-    /**
-     * 反射调 GnssStatus.Builder.addSatellite。
-     * 依次尝试参数数量从少到多的重载，直到成功。
-     *
-     * Android 参数顺序坑：官方 API 是 (constellationType, svid, cn0, elev, azim, usedInFix, ...)
-     * 我之前在 Kotlin 里把 constellation 和 svid 的顺序搞反了——Android 把 constellationType 放第一位。
-     */
-    private fun tryAddSatellite(builder: Any, s: com.lazybody.gnss.GnssSatellite): Boolean {
-        // 参数列表按 Android 官方顺序：constellationType 首位
-        val base = arrayOf(
-            s.constellationType,  // int   constellationType
-            s.svid,               // int   svid
-            s.cn0DbHz,            // float cn0DbHz
-            s.elevationDegrees,   // float elevationDegrees
-            s.azimuthDegrees,     // float azimuthDegrees
-            s.usedInFix           // boolean usedInFix
-        )
-        val extraA = arrayOf(
-            s.signalStrengthDbm,        // float signalStrengthDbm
-            0f,                         // float basebandCn0DbHz
-            s.signalToNoiseRatioDbHz,   // float snrDbHz / signalStrength() 各版本不同
-            s.carrierFrequencyHz        // float carrierFrequencyHz
-        )
+    /** Android 7—11 通过隐藏构造器和 setSatellite 填充状态。 */
+    private fun buildLegacyGnssStatus(
+        satellites: List<com.lazybody.gnss.GnssSatellite>
+    ): android.location.GnssStatus? {
+        return try {
+            val constructor = android.location.GnssStatus::class.java.getDeclaredConstructor()
+            constructor.isAccessible = true
+            val status = constructor.newInstance()
+            var count = 0
+            for (satellite in satellites) {
+                if (setLegacySatellite(status, count, satellite)) count++
+            }
+            if (count == 0) return null
+            XposedHelpers.callMethod(status, "setSatelliteCount", count)
+            status
+        } catch (_: Throwable) {
+            null
+        }
+    }
 
-        // 先试 10 参数（API 29+）
-        val tenArgs = base + extraA
-        try {
-            XposedHelpers.callMethod(builder, "addSatellite", *tenArgs)
-            return true
-        } catch (_: Throwable) {}
-
-        // 再试 6 参数（API 24+）
-        try {
-            XposedHelpers.callMethod(builder, "addSatellite", *base)
-            return true
-        } catch (_: Throwable) {}
-
+    private fun setLegacySatellite(
+        status: android.location.GnssStatus,
+        index: Int,
+        satellite: com.lazybody.gnss.GnssSatellite
+    ): Boolean {
+        val methods = android.location.GnssStatus::class.java.declaredMethods
+            .filter { it.name == "setSatellite" }
+            .sortedBy { it.parameterTypes.size }
+        for (method in methods) {
+            val size = method.parameterTypes.size
+            if (size != 9 && size != 11 && size != 12) continue
+            val args = arrayListOf<Any?>(
+                index, satellite.svid, satellite.constellationType, satellite.cn0DbHz,
+                satellite.elevationDegrees, satellite.azimuthDegrees,
+                satellite.hasEphemeris, satellite.hasAlmanac, satellite.usedInFix
+            )
+            when {
+                size == 11 -> {
+                    args.add(true) // hasCarrierFrequency
+                    args.add(satellite.carrierFrequencyHz)
+                }
+                size == 12 && method.parameterTypes[9] == Float::class.javaPrimitiveType -> {
+                    args.add(satellite.cn0DbHz) // basebandCn0DbHz
+                    args.add(true)
+                    args.add(satellite.carrierFrequencyHz)
+                }
+                size == 12 -> {
+                    args.add(true)
+                    args.add(satellite.carrierFrequencyHz)
+                    args.add(satellite.cn0DbHz)
+                }
+            }
+            try {
+                method.isAccessible = true
+                method.invoke(status, *args.toArray())
+                return true
+            } catch (_: Throwable) {}
+        }
         return false
     }
 
@@ -895,12 +899,12 @@ class XposedMain : IXposedHookLoadPackage {
         val listener: SensorEventListener,
         val fakeSensor: Sensor,
         val targetType: Int,
-        /** 真实 Sensor（反射恢复原始调用时用）——仅对 step 类型有意义，其他类型传 null。 */
-        val realSensor: Sensor?
+        /** 原始 registerListener 实际使用的 Sensor，注销时必须保持一致。 */
+        val registeredSensor: Sensor
     )
 
     @Suppress("PrivateApi")
-    private fun hookSensor(cl: ClassLoader) {
+    private fun hookSensor() {
         val sensorManagerClass = SensorManager::class.java
 
         // 5.1 getDefaultSensor / getSensorList：让 App 看见我们的假 Sensor（插在最前）
@@ -929,7 +933,7 @@ class XposedMain : IXposedHookLoadPackage {
             })
         } catch (_: Throwable) {}
 
-        // 5.2 registerListener：拦截 → 换假 Sensor + 恢复原始 + 登记
+        // 5.2 registerListener：用原始方法注册物理 Sensor，合成事件单独分发。
         try {
             XposedBridge.hookAllMethods(sensorManagerClass, "registerListener", object : XC_MethodHook() {
                 override fun beforeHookedMethod(param: MethodHookParam) {
@@ -937,47 +941,47 @@ class XposedMain : IXposedHookLoadPackage {
                     val sensor = param.args.getOrNull(1) as? Sensor ?: return
                     val type = runCatching { sensor.type }.getOrNull() ?: return
                     if (type !in FAKE_SENSOR_TYPES) return
-
+                    val originalMethod = param.method as? Method ?: return
                     val fake = getOrBuildFakeSensor(type) ?: return
-                    param.args[1] = fake
-
-                    // 反射找真 Sensor（用于停仿真时恢复）
+                    val manager = param.thisObject as SensorManager
                     val realSensor = runCatching {
-                        SensorEngineReflection.findRealSensor(param.thisObject as SensorManager, type)
+                        SensorEngineReflection.findRealSensor(manager, type)
                     }.getOrNull()
+                    val registeredSensor = realSensor ?: sensor
+                    val originalArgs = param.args.copyOf()
+                    originalArgs[1] = registeredSensor
 
-                    // 同时偷偷用原始调用器注册真 Sensor —— 这样我们既能控制假回调，
-                    // 又不会让真实物理事件被"屏蔽"掉（避免触发传感器计数/功耗异常）
                     runCatching {
-                        SensorEngineReflection.invokeOriginalRegisterListener(
-                            param.thisObject, listener, realSensor ?: sensor, param.args.getOrNull(3) as? Handler
-                        )
+                        SensorEngineReflection.invokeOriginal(originalMethod, manager, originalArgs)
                     }
-
-                    registrations.add(SensorReg(listener, fake, type, realSensor))
+                    registrations.add(SensorReg(listener, fake, type, registeredSensor))
+                    param.result = true
                     ensureSensorTickRunning()
                 }
             })
         } catch (_: Throwable) {}
 
-        // 5.3 unregisterListener：注销 + 反射恢复原始 unregister
+        // 5.3 unregisterListener：只注销此前实际注册的 Sensor，阻止 Hook 方法再次执行。
         try {
             XposedBridge.hookAllMethods(sensorManagerClass, "unregisterListener", object : XC_MethodHook() {
                 override fun beforeHookedMethod(param: MethodHookParam) {
                     val listener = param.args.firstOrNull() as? SensorEventListener ?: return
-                    val targets = registrations.filter { it.listener === listener }
-                    val iter = registrations.iterator()
-                    while (iter.hasNext()) {
-                        if (iter.next().listener === listener) iter.remove()
+                    val sensor = param.args.getOrNull(1) as? Sensor
+                    val sensorType = runCatching { sensor?.type }.getOrNull()
+                    val targets = registrations.filter {
+                        it.listener === listener && (sensor == null || it.targetType == sensorType)
                     }
-                    // 恢复原始 unregister
+                    if (targets.isEmpty()) return
+
                     for (reg in targets) {
                         runCatching {
                             SensorEngineReflection.invokeOriginalUnregisterListener(
-                                param.thisObject, reg.listener, reg.realSensor ?: reg.fakeSensor
+                                param.thisObject, reg.listener, reg.registeredSensor
                             )
                         }
                     }
+                    registrations.removeAll(targets)
+                    param.result = null
                     if (registrations.isEmpty()) {
                         motionSession.reset()
                         accelEngine.reset()
@@ -1009,7 +1013,8 @@ class XposedMain : IXposedHookLoadPackage {
                 val dtSec = ((nowNs - lastNanos).coerceAtLeast(0L)).toDouble() / 1_000_000_000.0
                 lastNanos = nowNs
 
-                val speed = currentFakeSpeed()
+                val state = readSimulationState()
+                val speed = state.speed.toDouble()
                 motionSession.speedMps = speed
                 val cadence = SensorEngine.cadenceFromSpeed(speed)
 
@@ -1045,9 +1050,12 @@ class XposedMain : IXposedHookLoadPackage {
                                     ?.let { reg.listener.onSensorChanged(it) }
                             }
                             Sensor.TYPE_ROTATION_VECTOR -> {
-                                // Android ROTATION_VECTOR values[0..3] = quaternion (x,y,z,w)
-                                // 我们简化：输出单位四元数（identity 旋转）
-                                SensorEngine.buildSensorEvent(floatArrayOf(0f, 0f, 0f, 1f), reg.fakeSensor, nowNs)
+                                // Android 方位角绕 Z 轴旋转，负号用于匹配传感器坐标系。
+                                val halfAngle = -Math.toRadians(state.bearing.toDouble()) / 2.0
+                                val rotation = floatArrayOf(
+                                    0f, 0f, Math.sin(halfAngle).toFloat(), Math.cos(halfAngle).toFloat()
+                                )
+                                SensorEngine.buildSensorEvent(rotation, reg.fakeSensor, nowNs)
                                     ?.let { reg.listener.onSensorChanged(it) }
                             }
                         }
@@ -1063,71 +1071,31 @@ class XposedMain : IXposedHookLoadPackage {
         sensorHandler?.post(tick)
     }
 
-    /** 读 App 侧 SimulationState.speed，决定步频/加速度强度。 */
-    private fun currentFakeSpeed(): Double {
-        val ctx = getAppContext() ?: return 0.0
-        return try {
-            val sp = android.preference.PreferenceManager.getDefaultSharedPreferences(ctx)
-            val json = sp.getString(StateBridge.KEY_STATE, null)
-            val state = SimulationState.fromJson(json)
-            if (state.isFresh(SystemClock.elapsedRealtimeNanos(), StateBridge.TTL_NANOS))
-                state.speed.toDouble() else 0.0
-        } catch (_: Throwable) { 0.0 }
-    }
-
     // =========================================================================
-    // 反射工具：用 XposedHelpers.callMethod 调原始 SensorManager（恢复物理传感器）
+    // 原始 SensorManager 方法调用，避免同名 Hook 重入。
     // =========================================================================
 
     private object SensorEngineReflection {
 
         fun findRealSensor(mgr: SensorManager, type: Int): Sensor? {
-            return runCatching {
-                for (method in mgr.javaClass.declaredMethods) {
-                    if (method.name == "getDefaultSensor"
-                        && method.parameterTypes.size == 1
-                        && method.parameterTypes[0] == Int::class.javaPrimitiveType
-                    ) {
-                        method.isAccessible = true
-                        method.invoke(mgr, type) as? Sensor
-                    }
-                }
-                null
-            }.getOrNull()
+            val method = SensorManager::class.java.getDeclaredMethod(
+                "getDefaultSensor", Int::class.javaPrimitiveType
+            )
+            return XposedBridge.invokeOriginalMethod(method, mgr, arrayOf(type)) as? Sensor
         }
 
-        /** 用 XposedHelpers.callMethod 调原始 registerListener —— 自动选对重载，比手写反射稳。 */
-        fun invokeOriginalRegisterListener(
-            mgr: Any?, listener: SensorEventListener, sensor: Sensor, handler: Handler?
+        fun invokeOriginal(method: Method, receiver: Any, args: Array<Any?>): Any? =
+            XposedBridge.invokeOriginalMethod(method, receiver, args)
+
+        fun invokeOriginalUnregisterListener(
+            mgr: Any,
+            listener: SensorEventListener,
+            sensor: Sensor
         ) {
-            val target = mgr as? SensorManager ?: return
-            runCatching {
-                // 先试 4 参（带 samplingPeriod + handler），再试 3 参（samplingPeriod）
-                try {
-                    XposedHelpers.callMethod(target, "registerListener",
-                        listener, sensor, 20_000, handler)
-                    return
-                } catch (_: Throwable) {}
-                try {
-                    XposedHelpers.callMethod(target, "registerListener",
-                        listener, sensor, 20_000)
-                    return
-                } catch (_: Throwable) {}
-                try {
-                    XposedHelpers.callMethod(target, "registerListener", listener, sensor)
-                } catch (_: Throwable) {}
-            }
-        }
-
-        fun invokeOriginalUnregisterListener(mgr: Any?, listener: SensorEventListener, sensor: Sensor?) {
-            val target = mgr as? SensorManager ?: return
-            runCatching {
-                if (sensor != null) {
-                    XposedHelpers.callMethod(target, "unregisterListener", listener, sensor)
-                } else {
-                    XposedHelpers.callMethod(target, "unregisterListener", listener)
-                }
-            }
+            val method = SensorManager::class.java.getDeclaredMethod(
+                "unregisterListener", SensorEventListener::class.java, Sensor::class.java
+            )
+            XposedBridge.invokeOriginalMethod(method, mgr, arrayOf(listener, sensor))
         }
     }
 }

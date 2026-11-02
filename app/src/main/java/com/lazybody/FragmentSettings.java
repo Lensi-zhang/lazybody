@@ -1,5 +1,6 @@
 package com.lazybody;
 
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.InputType;
 
@@ -7,15 +8,120 @@ import androidx.preference.EditTextPreference;
 import androidx.preference.ListPreference;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceFragmentCompat;
+import androidx.preference.PreferenceManager;
 import androidx.preference.SwitchPreferenceCompat;
 
 
 import com.elvishew.xlog.XLog;
+import com.lazybody.bridge.CellEntry;
+import com.lazybody.bridge.EnvironmentConfig;
+import com.lazybody.bridge.EnvironmentConfigStore;
+import com.lazybody.bridge.WifiEntry;
 import com.lazybody.utils.GoUtils;
+
+import java.util.Collections;
 
 import java.util.Objects;
 
 public class FragmentSettings extends PreferenceFragmentCompat {
+
+    private SharedPreferences appPreferences;
+    private EnvironmentConfigStore environmentStore;
+
+    private void setupEnvironmentPreferences() {
+        appPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext());
+        environmentStore = new EnvironmentConfigStore(requireContext());
+
+        String[] listKeys = {"setting_wifi_mode", "setting_cell_mode", "setting_cell_rat"};
+        for (String key : listKeys) {
+            ListPreference preference = findPreference(key);
+            if (preference != null) {
+                preference.setSummaryProvider((Preference.SummaryProvider<ListPreference>) ListPreference::getEntry);
+                preference.setOnPreferenceChangeListener((pref, newValue) -> {
+                    persistEnvironmentConfig(pref.getKey(), newValue);
+                    return true;
+                });
+            }
+        }
+
+        String[] editKeys = {
+                "setting_wifi_ssid", "setting_wifi_bssid", "setting_wifi_level",
+                "setting_cell_mcc", "setting_cell_mnc", "setting_cell_tac",
+                "setting_cell_cid", "setting_cell_level"
+        };
+        for (String key : editKeys) {
+            EditTextPreference preference = findPreference(key);
+            if (preference == null) continue;
+            preference.setSummaryProvider((Preference.SummaryProvider<EditTextPreference>) EditTextPreference::getText);
+            boolean numeric = !key.equals("setting_wifi_ssid") && !key.equals("setting_wifi_bssid");
+            preference.setOnBindEditTextListener(editText -> {
+                if (numeric) {
+                    int inputType = InputType.TYPE_CLASS_NUMBER;
+                    if (key.endsWith("_level")) inputType |= InputType.TYPE_NUMBER_FLAG_SIGNED;
+                    editText.setInputType(inputType);
+                }
+                editText.setSelection(editText.length());
+            });
+            preference.setOnPreferenceChangeListener((pref, newValue) -> {
+                String value = newValue.toString().trim();
+                if (value.isEmpty()) {
+                    GoUtils.DisplayToast(getContext(), getResources().getString(R.string.app_error_input_null));
+                    return false;
+                }
+                if (numeric) {
+                    try {
+                        Integer.parseInt(value);
+                    } catch (NumberFormatException e) {
+                        GoUtils.DisplayToast(getContext(), getResources().getString(R.string.app_error_input));
+                        return false;
+                    }
+                }
+                persistEnvironmentConfig(pref.getKey(), value);
+                return true;
+            });
+        }
+        persistEnvironmentConfig(null, null);
+    }
+
+    private String environmentValue(String key, String defaultValue, String changedKey, Object changedValue) {
+        if (key.equals(changedKey)) return changedValue.toString();
+        return appPreferences.getString(key, defaultValue);
+    }
+
+    private void persistEnvironmentConfig(String changedKey, Object changedValue) {
+        String wifiSsid = environmentValue("setting_wifi_ssid", "LazyBody_WiFi", changedKey, changedValue);
+        String wifiBssid = environmentValue("setting_wifi_bssid", "02:00:00:00:00:01", changedKey, changedValue);
+        WifiEntry wifi = new WifiEntry(
+                wifiSsid,
+                wifiBssid,
+                "WPA2-PSK-CCMP",
+                Integer.parseInt(environmentValue("setting_wifi_level", "-50", changedKey, changedValue)),
+                2412,
+                0L
+        );
+        CellEntry cell = new CellEntry(
+                "primary",
+                true,
+                Integer.parseInt(environmentValue("setting_cell_mcc", "460", changedKey, changedValue)),
+                Integer.parseInt(environmentValue("setting_cell_mnc", "1", changedKey, changedValue)),
+                Integer.parseInt(environmentValue("setting_cell_tac", "1", changedKey, changedValue)),
+                Integer.parseInt(environmentValue("setting_cell_cid", "1", changedKey, changedValue)),
+                0,
+                1800,
+                Integer.parseInt(environmentValue("setting_cell_level", "-80", changedKey, changedValue)),
+                environmentValue("setting_cell_rat", "LTE", changedKey, changedValue)
+        );
+        EnvironmentConfig config = new EnvironmentConfig(
+                EnvironmentConfig.Mode.valueOf(environmentValue("setting_wifi_mode", "PASSTHROUGH", changedKey, changedValue)),
+                Collections.singletonList(wifi),
+                wifiBssid,
+                EnvironmentConfig.Mode.valueOf(environmentValue("setting_cell_mode", "PASSTHROUGH", changedKey, changedValue)),
+                Collections.singletonList(cell),
+                "primary",
+                Collections.emptyList()
+        );
+        environmentStore.save(config);
+    }
 
     // Set a non-empty decimal EditTextPreference
     private void setupDecimalEditTextPreference(EditTextPreference preference) {
@@ -85,6 +191,8 @@ public class FragmentSettings extends PreferenceFragmentCompat {
 
         EditTextPreference pfPosHisValid = findPreference("setting_history_expiration");
         setupDecimalEditTextPreference(pfPosHisValid);
+
+        setupEnvironmentPreferences();
 
         // 设置版本号
         String verName;

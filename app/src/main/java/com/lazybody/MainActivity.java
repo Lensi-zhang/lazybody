@@ -72,6 +72,7 @@ import org.osmdroid.views.MapView;
 import org.osmdroid.views.overlay.MapEventsOverlay;
 import org.osmdroid.views.overlay.Marker;
 import org.osmdroid.views.overlay.Polyline;
+import org.osmdroid.views.overlay.infowindow.MarkerInfoWindow;
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
 
 import java.util.ArrayList;
@@ -620,49 +621,51 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     }
 
     private void performReverseGeocoding(GeoPoint p) {
+        if (mCurrentMarker == null || mCurrentMarker.getInfoWindow() == null) {
+            return;
+        }
+
+        View poiView = mCurrentMarker.getInfoWindow().getView();
+        TextView poiAddress = poiView.findViewById(R.id.poi_address);
+        TextView poiLongitude = poiView.findViewById(R.id.poi_longitude);
+        TextView poiLatitude = poiView.findViewById(R.id.poi_latitude);
+        String coordinateText = p.getLongitude() + "," + p.getLatitude();
+
+        poiAddress.setText(mMarkName != null ? mMarkName : "Selected Location");
+        poiLongitude.setText(String.valueOf(p.getLongitude()));
+        poiLatitude.setText(String.valueOf(p.getLatitude()));
+
+        ImageButton ibSave = poiView.findViewById(R.id.poi_save);
+        ibSave.setOnClickListener(v -> {
+            recordCurrentLocation(p.getLongitude(), p.getLatitude());
+            GoUtils.DisplayToast(MainActivity.this, getResources().getString(R.string.app_location_save));
+        });
+        ImageButton ibCopy = poiView.findViewById(R.id.poi_copy);
+        ibCopy.setOnClickListener(v -> {
+            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            cm.setPrimaryClip(ClipData.newPlainText("Location", coordinateText));
+            GoUtils.DisplayToast(MainActivity.this, getResources().getString(R.string.app_location_copy));
+        });
+        ImageButton ibShare = poiView.findViewById(R.id.poi_share);
+        ibShare.setOnClickListener(v -> ShareUtils.shareText(MainActivity.this, "分享位置", coordinateText));
+        ImageButton ibFly = poiView.findViewById(R.id.poi_fly);
+        ibFly.setOnClickListener(this::doGoLocation);
+
+        mCurrentMarker.setTitle(poiAddress.getText().toString());
+        mCurrentMarker.setSubDescription(p.getLatitude() + "," + p.getLongitude());
+        mCurrentMarker.showInfoWindow();
+
         new Thread(() -> {
             GeocoderNominatim geocoder = new GeocoderNominatim(Locale.getDefault(), getPackageName());
             try {
                 List<Address> addresses = geocoder.getFromLocation(p.getLatitude(), p.getLongitude(), 1);
                 if (addresses != null && !addresses.isEmpty()) {
-                    Address addr = addresses.get(0);
-                    mMarkName = addr.getAddressLine(0);
-
+                    String address = addresses.get(0).getAddressLine(0);
                     runOnUiThread(() -> {
-                        View poiView = View.inflate(MainActivity.this, R.layout.location_poi_info, null);
-                        TextView poiAddress = poiView.findViewById(R.id.poi_address);
-                        TextView poiLongitude = poiView.findViewById(R.id.poi_longitude);
-                        TextView poiLatitude = poiView.findViewById(R.id.poi_latitude);
-
-                        poiAddress.setText(mMarkName);
-                        poiLongitude.setText(String.valueOf(p.getLongitude()));
-                        poiLatitude.setText(String.valueOf(p.getLatitude()));
-
-                        ImageButton ibSave = poiView.findViewById(R.id.poi_save);
-                        ibSave.setOnClickListener(v -> {
-                            recordCurrentLocation(mMarkLatLngMap.getLongitude(), mMarkLatLngMap.getLatitude());
-                            GoUtils.DisplayToast(MainActivity.this,
-                                    getResources().getString(R.string.app_location_save));
-                        });
-                        ImageButton ibCopy = poiView.findViewById(R.id.poi_copy);
-                        ibCopy.setOnClickListener(v -> {
-                            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                            ClipData mClipData = ClipData.newPlainText("Label", mMarkLatLngMap.toString());
-                            cm.setPrimaryClip(mClipData);
-                            GoUtils.DisplayToast(MainActivity.this,
-                                    getResources().getString(R.string.app_location_copy));
-                        });
-                        ImageButton ibShare = poiView.findViewById(R.id.poi_share);
-                        ibShare.setOnClickListener(v -> ShareUtils.shareText(MainActivity.this, "分享位置",
-                                poiLongitude.getText() + "," + poiLatitude.getText()));
-                        ImageButton ibFly = poiView.findViewById(R.id.poi_fly);
-                        ibFly.setOnClickListener(this::doGoLocation);
-
-                        if (mCurrentMarker != null) {
-                            mCurrentMarker.setTitle(mMarkName);
-                            mCurrentMarker.setSubDescription(
-                                    String.valueOf(p.getLatitude()) + "," + String.valueOf(p.getLongitude()));
-                            mCurrentMarker.showInfoWindow();
+                        if (mCurrentMarker != null && p.equals(mCurrentMarker.getPosition())) {
+                            mMarkName = address;
+                            poiAddress.setText(address);
+                            mCurrentMarker.setTitle(address);
                         }
                     });
                 }
@@ -848,6 +851,11 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             mCurrentMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM);
             mCurrentMarker.setIcon(androidx.core.content.ContextCompat.getDrawable(this, R.drawable.ic_marker_pin));
             mCurrentMarker.setTitle("Selected Location");
+            mCurrentMarker.setInfoWindow(new MarkerInfoWindow(R.layout.location_poi_info, mMapView));
+            mCurrentMarker.setOnMarkerClickListener((marker, mapView) -> {
+                performReverseGeocoding(marker.getPosition());
+                return true;
+            });
             mMapView.getOverlays().add(mCurrentMarker);
             mMapView.invalidate();
         }

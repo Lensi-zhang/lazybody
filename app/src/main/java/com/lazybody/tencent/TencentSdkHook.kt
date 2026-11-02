@@ -2,32 +2,25 @@ package com.lazybody.tencent
 
 import android.location.Location
 import android.location.LocationManager
+import android.os.Build
 import com.lazybody.bridge.SimulationState
+import com.lazybody.xposed.XposedMain
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
-import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
+import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
-import java.util.concurrent.CopyOnWriteArrayList
+import java.lang.reflect.Proxy
+import java.util.Collections
+import java.util.IdentityHashMap
 
-/**
- * 腾讯位置 SDK 动态 hook。
- *
- * 设计来源：AnyWhere v2.11.1 xposed/hooks/i0.java——维护两个 profile
- * （open/sapp），反射扫描 SDK 主类的方法签名，动态 hook 所有返回 Location
- * 的 accessor。
- *
- * 简化策略：
- *   1) 尝试加载腾讯 SDK 常见的 6 个主类（open / sapp / plus / MiniLocation...）
- *   2) 对每个主类，扫描所有实例方法（非 static），找返回 Location 且参数空的
- *   3) hook：让它返回 SimulationState 对应的假位置
- *
- * 不做 profile 匹配 + 不写 Invoker.ORIGIN 恢复原始调用链——简化版够用。
- */
+/** 腾讯定位 SDK 的 Location getter 与 TencentLocationListener 回调 Hook。 */
 object TencentSdkHook {
 
-    // 腾讯位置 SDK 不同版本的主类名（open / sapp / plus / mini 等 profile）
+    private const val LISTENER_CLASS = "com.tencent.map.geolocation.TencentLocationListener"
+    private const val LOCATION_CLASS = "com.tencent.map.geolocation.TencentLocation"
+
     private val MAIN_CLASS_CANDIDATES = listOf(
         "com.tencent.map.geolocation.TencentLocationManager",
         "com.tencent.map.geolocation.sapp.TencentLocationManager",
@@ -37,104 +30,167 @@ object TencentSdkHook {
         "com.tencent.map.geolocation.MiniLocation"
     )
 
-    /**
-     * 尝试 hook 所有腾讯 SDK 主类。返回成功 hook 到的方法数。
-     */
+    /** removeUpdates 必须换回注册时使用的同一个代理对象。 */
+    private val listenerProxies = Collections.synchronizedMap(IdentityHashMap<Any, Any>())
+
     fun tryHook(lpparam: XC_LoadPackage.LoadPackageParam): Int {
         var hookedCount = 0
         for (className in MAIN_CLASS_CANDIDATES) {
             runCatching {
                 val cls = Class.forName(className, false, lpparam.classLoader)
-                hookedCount += hookClass(cls, lpparam)
+                hookedCount += hookClass(cls)
             }
         }
         return hookedCount
     }
 
-    private fun hookClass(cls: Class<*>, lpparam: XC_LoadPackage.LoadPackageParam): Int {
-        val candidates = scanLocationAccessors(cls)
-        if (candidates.isEmpty()) return 0
+    private fun hookClass(cls: Class<*>): Int {
+        var hookedCount = 0
+        val listenerClass = runCatching {
+            Class.forName(LISTENER_CLASS, false, cls.classLoader)
+        }.getOrNull()
+        val locationClass = runCatching {
+            Class.forName(LOCATION_CLASS, false, cls.classLoader)
+        }.getOrNull()
 
-        for (method in candidates) {
-            runCatching {
-                XposedBridge.hookMethod(method, object : XC_MethodHook() {
-                    override fun afterHookedMethod(param: MethodHookParam) {
-                        val fake = readFakeLocation()
-                        if (fake != null) param.setResult(fake)
-                    }
-                })
+        if (listenerClass != null) {
+            for (method in allMethods(cls)) {
+                if (Modifier.isStatic(method.modifiers)) continue
+                if (method.parameterTypes.none { it.name == LISTENER_CLASS }) continue
+                try {
+                    XposedBridge.hookMethod(method, object : XC_MethodHook() {
+                        override fun beforeHookedMethod(param: MethodHookParam) {
+                            for (index in param.args.indices) {
+                                val listener = param.args[index] ?: continue
+                                if (!listenerClass.isInstance(listener)) continue
+                                val proxy = if (method.name.startsWith("remove")) {
+                                    listenerProxies[listener]
+                                } else {
+                                    proxyListener(listener, listenerClass, locationClass)
+                                }
+                                if (proxy != null) param.args[index] = proxy
+                            }
+                        }
+                    })
+                    hookedCount++
+                } catch (_: Throwable) {}
             }
         }
-        return candidates.size
+
+        for (method in scanLocationAccessors(cls)) {
+            try {
+                XposedBridge.hookMethod(method, object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        readFakeLocation()?.let { param.result = it }
+                    }
+                })
+                hookedCount++
+            } catch (_: Throwable) {}
+        }
+        return hookedCount
     }
 
-    /**
-     * 扫描一个类中所有可能是 Location accessor 的实例方法。
-     *
-     * 筛选条件：
-     *   1) 返回类型是 android.location.Location 或其子类
-     *   2) 非 static（实例方法才有状态意义）
-     *   3) 参数为空（getter 风格）
-     *   4) 非 abstract（abstract 通常是接口声明）
-     */
-    private fun scanLocationAccessors(cls: Class<*>): List<Method> {
-        val result = CopyOnWriteArrayList<Method>()
-        val visited = HashSet<String>()
-        val targetName = "android.location.Location"
-
-        runCatching {
-            for (method in cls.declaredMethods) {
-                val modifiers = method.modifiers
-                if (Modifier.isStatic(modifiers)) continue
-                if (Modifier.isAbstract(modifiers)) continue
-                if (method.parameterTypes.isNotEmpty()) continue
-                val ret = method.returnType ?: continue
-                if (ret.name == targetName || Location::class.java.isAssignableFrom(ret)) {
-                    val key = "${cls.name}.${method.name}"
-                    if (visited.add(key)) {
-                        method.isAccessible = true
-                        result.add(method)
+    private fun proxyListener(
+        listener: Any,
+        listenerClass: Class<*>,
+        locationClass: Class<*>?
+    ): Any {
+        listenerProxies[listener]?.let { return it }
+        val proxy = Proxy.newProxyInstance(
+            listenerClass.classLoader,
+            arrayOf(listenerClass),
+            InvocationHandler { proxyInstance, method, args ->
+                when (method.name) {
+                    "toString" -> "TencentLocationListenerProxy($listener)"
+                    "hashCode" -> System.identityHashCode(proxyInstance)
+                    "equals" -> proxyInstance === args?.firstOrNull()
+                    else -> {
+                        val callArgs = args?.copyOf() ?: arrayOfNulls<Any?>(0)
+                        if (method.name == "onLocationChanged" && callArgs.isNotEmpty()) {
+                            val state = XposedMain.readSimulationState()
+                            if (state.active) {
+                                callArgs[0] = proxyTencentLocation(locationClass, state, callArgs[0])
+                                if (callArgs.size > 1 && callArgs[1] is Int) callArgs[1] = 0
+                            }
+                        }
+                        method.invoke(listener, *callArgs)
                     }
                 }
             }
-            // 父类也扫描（腾讯 SDK 内部常会有 abstract 基类 + 子类实现）
-            var parent = cls.superclass
-            while (parent != null && parent != Any::class.java) {
-                for (method in parent.declaredMethods) {
-                    val modifiers = method.modifiers
-                    if (Modifier.isStatic(modifiers)) continue
-                    if (method.parameterTypes.isNotEmpty()) continue
-                    val ret = method.returnType ?: continue
-                    if (ret.name == targetName || Location::class.java.isAssignableFrom(ret)) {
-                        val key = "${parent.name}.${method.name}"
-                        if (visited.add(key)) {
-                            method.isAccessible = true
-                            result.add(method)
+        )
+        listenerProxies[listener] = proxy
+        return proxy
+    }
+
+    private fun proxyTencentLocation(
+        locationClass: Class<*>?,
+        state: SimulationState,
+        original: Any?
+    ): Any? {
+        if (locationClass == null || !locationClass.isInterface) return original
+        return Proxy.newProxyInstance(
+            locationClass.classLoader,
+            arrayOf(locationClass),
+            InvocationHandler { proxy, method, args ->
+                when (method.name) {
+                    "getLatitude" -> state.lat
+                    "getLongitude" -> state.lng
+                    "getAltitude" -> state.alt
+                    "getBearing" -> state.bearing
+                    "getSpeed" -> state.speed
+                    "getAccuracy" -> state.accuracy
+                    "getTime" -> state.timeMillis.takeIf { it > 0L } ?: System.currentTimeMillis()
+                    "getProvider" -> LocationManager.GPS_PROVIDER
+                    "toString" -> "TencentLocation(${state.lng},${state.lat})"
+                    "hashCode" -> System.identityHashCode(proxy)
+                    "equals" -> proxy === args?.firstOrNull()
+                    else -> {
+                        if (original != null) {
+                            runCatching {
+                                method.invoke(original, *(args ?: arrayOfNulls<Any?>(0)))
+                            }.getOrNull() ?: defaultValue(method.returnType)
+                        } else {
+                            defaultValue(method.returnType)
                         }
                     }
                 }
-                parent = parent.superclass
             }
+        )
+    }
+
+    private fun defaultValue(type: Class<*>): Any? = when (type) {
+        java.lang.Boolean.TYPE -> false
+        java.lang.Byte.TYPE -> 0.toByte()
+        java.lang.Short.TYPE -> 0.toShort()
+        Integer.TYPE -> 0
+        java.lang.Long.TYPE -> 0L
+        java.lang.Float.TYPE -> 0f
+        java.lang.Double.TYPE -> 0.0
+        Character.TYPE -> 0.toChar()
+        else -> null
+    }
+
+    private fun scanLocationAccessors(cls: Class<*>): List<Method> = allMethods(cls).filter { method ->
+        !Modifier.isStatic(method.modifiers) &&
+            !Modifier.isAbstract(method.modifiers) &&
+            method.parameterTypes.isEmpty() &&
+            Location::class.java.isAssignableFrom(method.returnType)
+    }.distinctBy { it.toGenericString() }
+
+    private fun allMethods(cls: Class<*>): List<Method> {
+        val result = ArrayList<Method>()
+        var current: Class<*>? = cls
+        while (current != null && current != Any::class.java) {
+            result.addAll(current.declaredMethods)
+            current = current.superclass
         }
         return result
     }
 
-    /**
-     * 读 App 侧写入的 SimulationState，构造一个假的 Location 对象。
-     * 由 Xposed 模块调用时传进来的 context 已经缓存好了（XposedMain.cachedAppContext）。
-     */
     private fun readFakeLocation(): Location? {
-        val context = runCatching {
-            val atClass = Class.forName("android.app.ActivityThread")
-            XposedHelpers.callStaticMethod(atClass, "currentApplication") as? android.content.Context
-        }.getOrNull() ?: return null
-
-        val sp = android.preference.PreferenceManager.getDefaultSharedPreferences(context)
-        val json = sp.getString("xposed_location_state", null)
-        val state = SimulationState.fromJson(json)
+        val state = XposedMain.readSimulationState()
         if (!state.active) return null
-
-        val loc = Location(LocationManager.GPS_PROVIDER).apply {
+        return Location(LocationManager.GPS_PROVIDER).apply {
             latitude = state.lat
             longitude = state.lng
             altitude = state.alt
@@ -142,7 +198,9 @@ object TencentSdkHook {
             speed = state.speed
             accuracy = state.accuracy
             time = state.timeMillis.takeIf { it > 0L } ?: System.currentTimeMillis()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && state.elapsedRealtimeNanos > 0L) {
+                elapsedRealtimeNanos = state.elapsedRealtimeNanos
+            }
         }
-        return loc
     }
 }

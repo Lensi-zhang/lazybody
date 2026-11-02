@@ -3,7 +3,6 @@ package com.lazybody.bridge
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.SystemClock
-import androidx.preference.PreferenceManager
 
 /**
  * App 进程侧的写入端：把模拟状态序列化写入 SharedPreferences，
@@ -16,8 +15,8 @@ import androidx.preference.PreferenceManager
  */
 class StateBridge(context: Context) {
 
-    private val sp: SharedPreferences =
-        PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
+    private val sp: SharedPreferences = context.applicationContext
+        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     /** 两次实际写入之间的最小间隔，避免频繁跨进程 commit 开销。 */
     private val MIN_WRITE_INTERVAL_MS = 200L
@@ -46,7 +45,7 @@ class StateBridge(context: Context) {
         sp.edit()
             .putString(KEY_STATE, stamped.toJson().toString())
             .putBoolean(KEY_ACTIVE, stamped.active)
-            .apply()
+            .commit()
 
         lastWriteMs = now
     }
@@ -56,11 +55,12 @@ class StateBridge(context: Context) {
         sp.edit()
             .putBoolean(KEY_ACTIVE, false)
             .putString(KEY_STATE, SimulationState.INACTIVE.toJson().toString())
-            .apply()
+            .commit()
         lastWriteMs = 0L
     }
 
     companion object {
+        const val PREFS_NAME = "lazybody_xposed"
         const val KEY_STATE = "xposed_location_state"
         const val KEY_ACTIVE = "xposed_simulation_active"
 

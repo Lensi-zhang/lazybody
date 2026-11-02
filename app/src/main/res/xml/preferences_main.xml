@@ -75,6 +75,72 @@
     </PreferenceCategory>
 
     <PreferenceCategory
+        app:title="@string/setting_group_environment"
+        app:iconSpaceReserved="false">
+        <ListPreference
+            app:key="setting_wifi_mode"
+            app:title="@string/setting_wifi_mode"
+            app:entries="@array/array_environment_mode"
+            app:entryValues="@array/array_environment_mode_values"
+            app:defaultValue="PASSTHROUGH"
+            app:iconSpaceReserved="false" />
+        <EditTextPreference
+            app:key="setting_wifi_ssid"
+            app:title="@string/setting_wifi_ssid"
+            app:defaultValue="LazyBody_WiFi"
+            app:iconSpaceReserved="false" />
+        <EditTextPreference
+            app:key="setting_wifi_bssid"
+            app:title="@string/setting_wifi_bssid"
+            app:defaultValue="02:00:00:00:00:01"
+            app:iconSpaceReserved="false" />
+        <EditTextPreference
+            app:key="setting_wifi_level"
+            app:title="@string/setting_wifi_level"
+            app:defaultValue="-50"
+            app:iconSpaceReserved="false" />
+        <ListPreference
+            app:key="setting_cell_mode"
+            app:title="@string/setting_cell_mode"
+            app:entries="@array/array_environment_mode"
+            app:entryValues="@array/array_environment_mode_values"
+            app:defaultValue="PASSTHROUGH"
+            app:iconSpaceReserved="false" />
+        <ListPreference
+            app:key="setting_cell_rat"
+            app:title="@string/setting_cell_rat"
+            app:entries="@array/array_cell_rat"
+            app:entryValues="@array/array_cell_rat"
+            app:defaultValue="LTE"
+            app:iconSpaceReserved="false" />
+        <EditTextPreference
+            app:key="setting_cell_mcc"
+            app:title="@string/setting_cell_mcc"
+            app:defaultValue="460"
+            app:iconSpaceReserved="false" />
+        <EditTextPreference
+            app:key="setting_cell_mnc"
+            app:title="@string/setting_cell_mnc"
+            app:defaultValue="1"
+            app:iconSpaceReserved="false" />
+        <EditTextPreference
+            app:key="setting_cell_tac"
+            app:title="@string/setting_cell_tac"
+            app:defaultValue="1"
+            app:iconSpaceReserved="false" />
+        <EditTextPreference
+            app:key="setting_cell_cid"
+            app:title="@string/setting_cell_cid"
+            app:defaultValue="1"
+            app:iconSpaceReserved="false" />
+        <EditTextPreference
+            app:key="setting_cell_level"
+            app:title="@string/setting_cell_level"
+            app:defaultValue="-80"
+            app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
         app:title="@string/setting_group_log"
         app:iconSpaceReserved="false">
 

@@ -69,6 +69,20 @@
     <string name="setting_random_offset_default">10.0</string>
     <string name="setting_lat_max_offset">经度最大偏移距离(米)</string>
     <string name="setting_lon_max_offset">纬度最大偏移距离(米)</string>
+    <!-- WiFi / Cell 环境模拟 -->
+    <string name="setting_group_environment">网络环境模拟（Xposed）</string>
+    <string name="setting_wifi_mode">WiFi 模式</string>
+    <string name="setting_wifi_ssid">WiFi SSID</string>
+    <string name="setting_wifi_bssid">WiFi BSSID</string>
+    <string name="setting_wifi_level">WiFi 信号强度（dBm）</string>
+    <string name="setting_cell_mode">基站模式</string>
+    <string name="setting_cell_rat">蜂窝网络类型</string>
+    <string name="setting_cell_mcc">移动国家码（MCC）</string>
+    <string name="setting_cell_mnc">移动网络码（MNC）</string>
+    <string name="setting_cell_tac">跟踪区码（TAC）</string>
+    <string name="setting_cell_cid">小区 ID（CID）</string>
+    <string name="setting_cell_level">基站信号强度（dBm）</string>
+
     <!-- 记录相关参数 -->
     <string name="setting_group_log">记录</string>
     <string name="setting_log_off">关闭日志</string>
