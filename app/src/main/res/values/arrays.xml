@@ -17,5 +17,20 @@
         <item>1</item>
         <item>2</item>
     </string-array>
-
+    <string-array name="array_environment_mode">
+        <item>使用真实数据</item>
+        <item>隐藏数据</item>
+        <item>使用伪造数据</item>
+    </string-array>
+    <string-array name="array_environment_mode_values">
+        <item>PASSTHROUGH</item>
+        <item>HIDE</item>
+        <item>FORGE</item>
+    </string-array>
+    <string-array name="array_cell_rat">
+        <item>GSM</item>
+        <item>WCDMA</item>
+        <item>LTE</item>
+        <item>NR</item>
+    </string-array>
 </resources>

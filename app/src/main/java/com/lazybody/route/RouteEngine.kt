@@ -128,7 +128,7 @@ class RouteEngine(
     init {
         require(waypoints.size >= 2) { "路线至少需要 2 个航点" }
         val wps = waypoints.toList()
-        nodes = if (mode == RouteMode.LOOP) wps + wps.reversed().dropLast(1) else wps
+        nodes = if (mode == RouteMode.LOOP) wps + wps.reversed().drop(1) else wps
         segments = DoubleArray(nodes.size - 1)
         bearings = DoubleArray(nodes.size - 1)
         var acc = 0.0
@@ -164,10 +164,10 @@ class RouteEngine(
                 val last = nodes.last()
                 return last to bearings.last()
             } else {
-                // LOOP：走完一个完整往返，回到起点重置
-                traveled = 0.0
+                // LOOP：保留跨周期余量，下一 tick 从起点连续前进。
+                completedLoops += floor(traveled / target).toInt()
+                traveled %= target
                 currentSegment = 0
-                completedLoops++
                 returning = false
             }
         }

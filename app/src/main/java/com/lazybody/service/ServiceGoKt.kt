@@ -205,13 +205,15 @@ class ServiceGoKt : Service(), SensorEventListener {
         }
         ContextCompat.registerReceiver(this, mActReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
 
-        val mChannel = NotificationChannel(
-            SERVICE_GO_NOTE_CHANNEL_ID,
-            SERVICE_GO_NOTE_CHANNEL_NAME,
-            NotificationManager.IMPORTANCE_DEFAULT
-        )
-        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as? NotificationManager
-        notificationManager?.createNotificationChannel(mChannel)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                SERVICE_GO_NOTE_CHANNEL_ID,
+                SERVICE_GO_NOTE_CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_DEFAULT
+            )
+            val notificationManager = getSystemService(NOTIFICATION_SERVICE) as? NotificationManager
+            notificationManager?.createNotificationChannel(channel)
+        }
 
         val clickIntent = Intent(this, com.lazybody.MainActivity::class.java)
         val clickPI = PendingIntent.getActivity(this, 1, clickIntent, PendingIntent.FLAG_IMMUTABLE)

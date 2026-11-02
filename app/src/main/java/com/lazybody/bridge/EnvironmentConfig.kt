@@ -2,7 +2,6 @@ package com.lazybody.bridge
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.preference.PreferenceManager
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -83,8 +82,8 @@ data class EnvironmentConfig(
  */
 class EnvironmentConfigStore(context: Context) {
 
-    private val sp: SharedPreferences =
-        PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
+    private val sp: SharedPreferences = context.applicationContext
+        .getSharedPreferences(StateBridge.PREFS_NAME, Context.MODE_PRIVATE)
 
     /** App 侧：把整个 EnvironmentConfig 落盘。 */
     fun save(config: EnvironmentConfig) {
@@ -92,7 +91,7 @@ class EnvironmentConfigStore(context: Context) {
             .putString(KEY_CONFIG, config.toJson().toString())
             .putString(KEY_WIFI_MODE, config.wifiMode.name)
             .putString(KEY_CELL_MODE, config.cellMode.name)
-            .apply()
+            .commit()
     }
 
     /** App 侧：单独切 WiFi 模式（便捷 API）。 */

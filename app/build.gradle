@@ -28,8 +28,8 @@ android {
         minSdkVersion 24
         //noinspection ExpiredTargetSdkVersion
         targetSdkVersion 34
-        versionCode 2
-        versionName '2.0' // https://semver.org/lang/zh-CN/
+        versionCode 3
+        versionName '2.1' // https://semver.org/lang/zh-CN/
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         resourceConfigurations += ['zh', 'zh-rCN', 'en', 'en-rUS']
         signingConfig = signingConfigs.release
@@ -104,9 +104,9 @@ android {
             if (outputFile != null && outputFile.name.endsWith('.apk')) {
                 def fileName
                 if (variant.buildType.name == 'release') {
-                    fileName = "LazyBody_${defaultConfig.versionName}_arm64-v8a_release.apk"
+                    fileName = "LazyBody_${defaultConfig.versionName}_release.apk"
                 } else {
-                    fileName = "LazyBody_${defaultConfig.versionName}_arm64-v8a_debug.apk"
+                    fileName = "LazyBody_${defaultConfig.versionName}_debug.apk"
                 }
                 outputFileName=fileName
             }
